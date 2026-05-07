@@ -1,0 +1,25 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+node_modules/
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.uv-cache/
+*.egg-info/
+
+# Generated demo input + pipeline output
+skills/engineering/syntherklaas/examples/sample_input.xlsx
+skills/engineering/syntherklaas/examples/sample_input/
+skills/engineering/syntherklaas/scripts/uv.lock
+*.db
+*.sqlite
+*.sqlite3
+
+# Tool/agent artefacts
+.playwright-mcp/
+repo-structure.md
