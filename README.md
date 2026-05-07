@@ -1,9 +1,7 @@
 # syntherklaas
 
 <p align="center">
-  <img src="assets/sinterklaas.jpg" alt="Close-up portrait of Sinterklaas wearing his red and gold mitre" width="640">
-  <br>
-  <sub><i>"Close-up van Sinterklaas" by Ronn — <a href="https://commons.wikimedia.org/wiki/File:Close-up_van_Sinterklaas.jpg">Wikimedia Commons</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</i></sub>
+  <img src="assets/sinterklaas.jpg" alt="Sinterklaas waving to the crowd during an intocht, wearing his red and gold mitre and purple gloves" width="640">
 </p>
 
 Synthetic data pipeline as a [Claude Code](https://claude.ai/code) skill. Excel or CSV input → SQLite output, with consistent PII anonymization and intact foreign-key relationships.
