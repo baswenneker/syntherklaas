@@ -1,12 +1,15 @@
-# syntherklaas
+# Syntherklaas: skill for synthetic data generation
 
 <p align="center">
   <img src="assets/sinterklaas.jpg" alt="Sinterklaas waving to the crowd during an intocht, wearing his red and gold mitre and purple gloves" width="640">
 </p>
 
-Synthetic data pipeline as a [Claude Code](https://claude.ai/code) skill. Excel or CSV input → SQLite output, with consistent PII anonymization and intact foreign-key relationships.
+Real data is the fastest way to prototype.<br>
+GDPR is the fastest way to get blocked.
 
-Built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
+`syntherklaas` resolves both: feed it an Excel file or CSV directory of production data and it returns a SQLite database with names, emails, phone numbers, BSNs, postcodes, and IBANs replaced by Dutch fakes — while preserving table shapes, foreign keys, and value coherence so your queries behave the same.
+
+Packaged as a [Claude Code](https://claude.ai/code) skill, built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
 
 ## Installation
 
