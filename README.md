@@ -1,5 +1,11 @@
 # syntherklaas
 
+<p align="center">
+  <img src="assets/sinterklaas.jpg" alt="De nieuwe Sint Nicolaas-prent — 18th-century print of Sinterklaas on horseback" width="640">
+  <br>
+  <sub><i>"De nieuwe Sint Nicolaas-prent" — Rijksmuseum, 18th century. Public domain via <a href="https://commons.wikimedia.org/wiki/File:De_nieuwe_Sint_Nicolaas-prent.jpg">Wikimedia Commons</a>.</i></sub>
+</p>
+
 Synthetic data pipeline as a [Claude Code](https://claude.ai/code) skill. Excel or CSV input → SQLite output, with consistent PII anonymization and intact foreign-key relationships.
 
 Built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
