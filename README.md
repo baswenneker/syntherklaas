@@ -28,9 +28,9 @@ From Claude Code, either invoke directly:
 /syntherklaas
 ```
 
-Or describe the task — Claude triggers the skill via its description (matches phrases like *synthetische data*, *fake data*, *anonimiseer*, *Excel/CSV naar SQLite*, *BSN-safe test data*):
+Or describe the task — Claude triggers the skill via its description (matches phrases like *synthetic data*, *fake data*, *anonymize*, *Excel/CSV to SQLite*, *BSN-safe test data*):
 
-> Anonimiseer `example_data/xlsx/example_data.xlsx` naar `./demo.db` met max 50 klanten.
+> Anonymize `example_data/xlsx/example_data.xlsx` into `./demo.db`, capped at 50 root rows.
 
 The skill loads its own instructions from `SKILL.md`, runs the pipeline (detect → resolve FKs → sample → anonymize → write), and reports per-column PII detection, FK resolution, row counts, and ID ranges.
 
@@ -60,7 +60,65 @@ That script regenerates the demo, runs both variants through the pipeline, and p
 ```
 /syntherklaas
 ```
-> "Draai de pipeline op `example_data/xlsx/example_data.xlsx` naar `./demo.db`."
+> "Run the pipeline on `example_data/xlsx/example_data.xlsx` into `./demo.db`."
+
+### Example run on `example_data/csv/`
+
+Invocation (no `--max-rows` cap, all input is processed):
+
+```bash
+bash skills/engineering/syntherklaas/scripts/run.sh \
+  --input ./example_data/csv \
+  --db ./tmp/example_data.db
+```
+
+Pipeline report:
+
+```
+PII detection:
+  klanten.bsn: BSN
+  klanten.email: EMAIL_ADDRESS
+  klanten.naam: PERSON
+  klanten.postcode: NL_POSTCODE
+  klanten.telefoon: NL_PHONE
+  orderlines: (none)
+  orders: (none)
+
+FK resolution:
+  orderlines.order_id -> orders.id
+  orders.klant_id -> klanten.id
+Topological order: klanten -> orders -> orderlines
+
+Row counts:
+  klanten: 50 -> 50
+  orderlines: 583 -> 583
+  orders: 201 -> 201
+
+Anonymized 250 unique values across 5 entity types:
+  ['BSN', 'EMAIL_ADDRESS', 'NL_PHONE', 'NL_POSTCODE', 'PERSON']
+
+SQLite write:
+  klanten: 50 rows inserted (IDs 1..50)
+  orderlines: 583 rows inserted (IDs 1..583)
+  orders: 201 rows inserted (IDs 1..201)
+```
+
+Sample of `klanten` after the run:
+
+```
+$ sqlite3 -header -column ./tmp/example_data.db \
+    "SELECT id, naam, email, bsn, telefoon, postcode FROM klanten LIMIT 5"
+
+id  naam                     email                           bsn        telefoon     postcode
+--  -----------------------  ------------------------------  ---------  -----------  --------
+1   Tom Mulder               van-ommerenben@example.org      372941631  06-51510466  2365 HM
+2   Liza van de Weterink     kde-bruin@example.org           219225060  06-07771090  0692 MX
+3   Lisanne Oosterhek        ejones@example.com              750586461  06-45258652  3923 SU
+4   Joy die Bont             ties93@example.org              951873246  06-36401889  5017 SZ
+5   Dean Garret-de Strigter  dylanovan-boulogne@example.org  580059145  06-23231473  7801 JI
+```
+
+All five PII types are replaced (names → Dutch fakes, emails → `@example.{org,com}` with domain fully replaced, BSNs pass 11-proof checksum, phones in `06-XXXXXXXX` format, postcodes in `1234 XX` format). Foreign keys remain consistent: `orderlines.order_id → orders.id → klanten.id` joins still return the same logical pairs as the input, just with the fake names.
 
 ## Input format
 

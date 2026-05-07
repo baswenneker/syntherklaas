@@ -1,6 +1,6 @@
 ---
 name: syntherklaas
-description: Generate synthetic data from Excel (multi-tab) or a directory of CSV files into a SQLite database with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. Use when the user wants to anonymize business data, create test or demo data from production samples, convert Excel or CSV input into SQLite with fake but coherent values, or mentions "synthetische data", "fake data", "anonimiseer", "BSN-safe test data", or refers to multi-table data with FK relations.
+description: Generate synthetic data from Excel (multi-tab) or a directory of CSV files into a SQLite database with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. Use when the user wants to anonymize business data, create test or demo data from production samples, convert Excel or CSV input into SQLite with fake but coherent values, or mentions "synthetic data", "fake data", "anonymize", "BSN-safe test data", or refers to multi-table data with FK relations.
 ---
 
 # syntherklaas
