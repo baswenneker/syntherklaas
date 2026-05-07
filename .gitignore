@@ -12,9 +12,7 @@ __pycache__/
 .uv-cache/
 *.egg-info/
 
-# Generated demo input + pipeline output
-skills/engineering/syntherklaas/examples/sample_input.xlsx
-skills/engineering/syntherklaas/examples/sample_input/
+# Pipeline output and uv lockfile
 skills/engineering/syntherklaas/scripts/uv.lock
 *.db
 *.sqlite
@@ -23,3 +21,4 @@ skills/engineering/syntherklaas/scripts/uv.lock
 # Tool/agent artefacts
 .playwright-mcp/
 repo-structure.md
+./.tmp/

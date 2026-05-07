@@ -1,53 +1,96 @@
 # syntherklaas
 
-Synthetic data pipeline for Excel / CSV → SQLite, with consistent PII anonymization and intact foreign keys.
+Synthetic data pipeline as a [Claude Code](https://claude.ai/code) skill. Excel or CSV input → SQLite output, with consistent PII anonymization and intact foreign-key relationships.
 
-A Claude Code skill (and standalone Python CLI) that takes business-shaped input — an Excel file with multiple tabs, or a directory of CSV files — detects personally identifiable information per column, replaces every PII value with a coherent fake (the same input always maps to the same fake within a run, across rows and across tables), and writes the result to a SQLite database while preserving foreign-key relationships via per-table ID-offset rewriting.
+Built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
 
-Built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection, [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for fake values, and custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
+## Installation
+
+> Only tested with [Claude Code](https://claude.ai/code).
+
+```bash
+npx skills@latest add baswenneker/syntherklaas
+```
+
+After installation, restart Claude Code (or open a new session). The skill registers itself via `.claude-plugin/plugin.json`.
 
 ## Skills
 
 | Category | Skill | Description |
 | --- | --- | --- |
-| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Generate synthetic data from Excel (multi-tab) or a directory of CSVs into a SQLite database with consistent PII anonymization and intact foreign-key relationships. |
+| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Generate synthetic data from Excel (multi-tab) or a directory of CSVs into a SQLite database with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. |
 
-## Quick start
+## How to invoke
 
-```bash
-cd skills/engineering/syntherklaas/scripts
+From Claude Code, either invoke directly:
 
-# First run only: install deps + Spacy NL model
-uv sync
-uv run python -m spacy download nl_core_news_md
-
-# Anonymize an Excel file into a new SQLite DB
-uv run python syntherklaas.py \
-  --input ./mydata.xlsx \
-  --db ./mydata.sqlite
-
-# CSV directory + cap to 100 root rows
-uv run python syntherklaas.py \
-  --input ./mydata/ \
-  --db ./mydata.sqlite \
-  --max-rows 100
-
-# Append to existing DB
-uv run python syntherklaas.py \
-  --input ./more.xlsx \
-  --db ./existing.sqlite \
-  --mode append
+```
+/syntherklaas
 ```
 
-The bundled `scripts/run.sh` does the install on first invocation and then forwards to the CLI. Use it from Claude Code via `${CLAUDE_SKILL_DIR}/scripts/run.sh ...`.
+Or describe the task — Claude triggers the skill via its description (matches phrases like *synthetische data*, *fake data*, *anonimiseer*, *Excel/CSV naar SQLite*, *BSN-safe test data*):
 
-## Try it on the demo
+> Anonimiseer `example_data/xlsx/example_data.xlsx` naar `./demo.db` met max 50 klanten.
+
+The skill loads its own instructions from `SKILL.md`, runs the pipeline (detect → resolve FKs → sample → anonymize → write), and reports per-column PII detection, FK resolution, row counts, and ID ranges.
+
+## Try it on the bundled demo
+
+A 3-table demo (50 klanten / 201 orders / 583 orderlines, with PII columns and meta-sheets) lives at the project root under `example_data/`:
+
+```
+example_data/
+├── xlsx/example_data.xlsx       # Excel variant (3 data tabs + 2 meta tabs)
+└── csv/                         # CSV-directory variant
+    ├── klanten.csv
+    ├── orders.csv
+    ├── orderlines.csv
+    ├── _relations.csv
+    └── _pii_config.csv
+```
+
+Both are committed; regenerate them with:
 
 ```bash
 bash skills/engineering/syntherklaas/examples/run-example.sh
 ```
 
-Generates a 3-table demo (50 klanten / 201 orders / 583 orderlines) with PII columns, runs both Excel and CSV variants of the input through the pipeline, and prints a JOIN sanity check showing fake Dutch names with their order counts.
+That script regenerates the demo, runs both variants through the pipeline, and prints a JOIN sanity check showing fake Dutch names with their order counts. You can also point Claude at the demo files directly:
+
+```
+/syntherklaas
+```
+> "Draai de pipeline op `example_data/xlsx/example_data.xlsx` naar `./demo.db`."
+
+## Input format
+
+- **Excel**: one tab per table. Optional meta-tabs `_relations` (FK overrides) and `_pii_config` (PII overrides).
+- **CSV directory**: one file per table. Optional `_relations.csv` and `_pii_config.csv` in the same directory.
+
+Override schemas:
+
+```
+_relations:    table | column | references_table | references_column
+_pii_config:   table | column | pii_type         | strategy   (force | skip)
+```
+
+Resolution priority:
+
+- **FKs**: existing DB schema (append-mode) > `_relations` > auto-infer (column-name `*_id` → match parent table).
+- **PII**: `_pii_config` (force/skip) > Presidio auto-detection.
+
+## PII coverage (v1)
+
+| Type | Detection | Generation |
+|------|-----------|------------|
+| `PERSON` | Presidio NER (Spacy `nl_core_news_md`) | `Faker.name()` (nl_NL) |
+| `EMAIL_ADDRESS` | Presidio regex | `Faker.email()` (domain fully replaced) |
+| `NL_PHONE` / `PHONE_NUMBER` | Custom recognizer (06-/+31/0X0 formats) | Custom Faker provider (06-XXXXXXXX) |
+| `BSN` | Custom recognizer (regex + 11-proof checksum) | Custom Faker provider (passes 11-proof) |
+| `NL_IBAN` / `IBAN_CODE` | Custom recognizer (mod-97) | `Faker.iban()` |
+| `NL_POSTCODE` | Custom recognizer (`1234 AB`) | Custom Faker provider |
+
+Out of scope for v1: addresses (street/huisnr), dates of birth, credit cards, passport numbers.
 
 ## Pipeline
 
@@ -65,59 +108,47 @@ Input (xlsx tabs / csv dir + optional _relations / _pii_config)
 SQLite + human-readable report
 ```
 
-## Input format
-
-- **Excel**: one tab per table. Optional meta-tabs `_relations` (FK overrides) and `_pii_config` (PII overrides).
-- **CSV directory**: one file per table. Optional `_relations.csv` and `_pii_config.csv` in the same directory.
-
-Override schemas:
-
-```
-_relations:    table | column | references_table | references_column
-_pii_config:   table | column | pii_type         | strategy   (force | skip)
-```
-
-Resolution priority for FKs: existing DB schema (append-mode) > `_relations` > auto-infer.
-Resolution priority for PII: `_pii_config` (force/skip) > Presidio auto-detection.
-
-## PII coverage (v1)
-
-| Type | Detection | Generation |
-|------|-----------|------------|
-| `PERSON` | Presidio NER (Spacy `nl_core_news_md`) | `Faker.name()` (nl_NL) |
-| `EMAIL_ADDRESS` | Presidio regex | `Faker.email()` |
-| `NL_PHONE` / `PHONE_NUMBER` | Custom recognizer (06-/+31/0X0 formats) | Custom Faker provider (06-XXXXXXXX) |
-| `BSN` | Custom recognizer (regex + 11-proof) | Custom Faker provider (passes 11-proof) |
-| `NL_IBAN` / `IBAN_CODE` | Custom recognizer (mod-97) | `Faker.iban()` |
-| `NL_POSTCODE` | Custom recognizer (`1234 AB`) | Custom Faker provider |
-
-Out of scope for v1: addresses (street/huisnr), dates of birth, credit cards, passport numbers.
+The shared `entity_mapping` is the key to consistency: same input value always yields the same fake within a run, both across rows of one table and across tables (so a customer's anonymized name in `klanten.naam` matches their name in `orders.klant_naam`). FKs stay intact through per-table ID-offset rewriting; new IDs start at `MAX(id)+1` in append-mode.
 
 ## Tests
 
 ```bash
 cd skills/engineering/syntherklaas/scripts
+uv sync
 uv run pytest -v
 ```
 
-21 unit tests covering BSN 11-proof, anonymizer mapping consistency cross-row + cross-table, FK auto-inference + cyclic + composite detection, and SQLite ID-offset + FK rewrite + schema-mismatch.
+21 unit tests cover BSN 11-proof, anonymizer mapping consistency cross-row + cross-table, FK auto-inference + cyclic + composite detection, and SQLite ID-offset + FK rewrite + schema-mismatch.
 
-## Adding more skills
+## Adding more skills to this plugin
 
-1. Create a new folder under `skills/<category>/<skill-name>/` with a `SKILL.md` (YAML frontmatter `name`, `description`, plus a markdown body).
+1. Create `skills/<category>/<skill-name>/SKILL.md` (YAML frontmatter `name`, `description`, plus a markdown body).
 2. Bash helpers go in a sibling `scripts/` subfolder.
 3. Register the skill folder in `.claude-plugin/plugin.json` under `skills`.
 4. Add a row to the table above.
 
-## Exit codes
+See [CLAUDE.md](CLAUDE.md) for repo conventions and [CONTEXT.md](CONTEXT.md) for shared vocabulary.
 
-- `0` — success
-- `2` — schema mismatch or invalid `--mode` against existing DB
-- `3` — cyclic or composite FK detected
-- `4` — missing dependencies (uv / spacy model)
+## Standalone CLI (without Claude Code)
+
+If you want to run the pipeline directly without going through the skill:
+
+```bash
+cd skills/engineering/syntherklaas/scripts
+uv sync
+uv run python -m spacy download nl_core_news_md
+
+uv run python syntherklaas.py \
+  --input /path/to/data.xlsx \
+  --db /path/to/output.sqlite \
+  --max-rows 100
+```
+
+Exit codes: `0` ok, `2` schema mismatch, `3` cyclic / composite FK, `4` missing dependencies.
 
 ## Related
 
 - [microsoft/presidio](https://github.com/microsoft/presidio) — PII detection and de-identification SDK.
-- [joke2k/faker](https://github.com/joke2k/faker) — fake data generation, used here with `nl_NL` locale.
-- [HeadingFWD/fwd-skills](https://github.com/baswenneker/fwd-skills) — sibling skills plugin from which this repo borrows layout conventions.
+- [joke2k/faker](https://github.com/joke2k/faker) — fake data generation, used here with the `nl_NL` locale.
+- [baswenneker/fwd-skills](https://github.com/baswenneker/fwd-skills) — sibling skills plugin from which this repo borrows layout conventions.
+- [mattpocock/skills](https://github.com/mattpocock/skills/tree/main) — the `skills` CLI used for installation and the layout pattern this repo follows.

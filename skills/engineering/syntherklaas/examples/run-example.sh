@@ -5,6 +5,7 @@ set -euo pipefail
 EXAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "${EXAMPLES_DIR}/.." && pwd)"
 SCRIPTS_DIR="${SKILL_DIR}/scripts"
+PROJECT_ROOT="$(cd "${SKILL_DIR}/../../.." && pwd)"
 
 cd "${SCRIPTS_DIR}"
 
@@ -36,14 +37,14 @@ rm -f "${DB_XLSX}" "${DB_CSV}"
 
 echo ">>> Pipeline 1/2: Excel input -> ${DB_XLSX} (cap 50 klanten)"
 uv run python syntherklaas.py \
-    --input "${EXAMPLES_DIR}/sample_input.xlsx" \
+    --input "${PROJECT_ROOT}/example_data/xlsx/example_data.xlsx" \
     --db "${DB_XLSX}" \
     --max-rows 50
 
 echo
 echo ">>> Pipeline 2/2: CSV input -> ${DB_CSV} (cap 50 klanten)"
 uv run python syntherklaas.py \
-    --input "${EXAMPLES_DIR}/sample_input" \
+    --input "${PROJECT_ROOT}/example_data/csv" \
     --db "${DB_CSV}" \
     --max-rows 50
 

@@ -1,4 +1,4 @@
-"""Generate the demo input — both ``sample_input.xlsx`` and ``sample_input/*.csv``.
+"""Generate the demo input — both ``example_data/xlsx/example_data.xlsx`` and ``example_data/csv/*.csv``.
 
 The data is itself already fake (Faker output) but it serves as realistic
 input for the pipeline to detect and re-anonymize. The ``_pii_config`` sheet
@@ -16,8 +16,9 @@ import pandas as pd
 from faker import Faker
 
 THIS_DIR = Path(__file__).resolve().parent
-EXCEL_PATH = THIS_DIR / "sample_input.xlsx"
-CSV_DIR = THIS_DIR / "sample_input"
+PROJECT_ROOT = THIS_DIR.parents[3]
+EXCEL_PATH = PROJECT_ROOT / "example_data" / "xlsx" / "example_data.xlsx"
+CSV_DIR = PROJECT_ROOT / "example_data" / "csv"
 
 
 def _gen_postcode(rng: random.Random) -> str:
@@ -97,6 +98,7 @@ def main() -> None:
         }
     )
 
+    EXCEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl") as writer:
         klanten.to_excel(writer, sheet_name="klanten", index=False)
         orders.to_excel(writer, sheet_name="orders", index=False)
@@ -108,7 +110,7 @@ def main() -> None:
         f"({n_klanten} klanten, {len(orders)} orders, {len(orderlines)} orderlines)"
     )
 
-    CSV_DIR.mkdir(exist_ok=True)
+    CSV_DIR.mkdir(parents=True, exist_ok=True)
     klanten.to_csv(CSV_DIR / "klanten.csv", index=False)
     orders.to_csv(CSV_DIR / "orders.csv", index=False)
     orderlines.to_csv(CSV_DIR / "orderlines.csv", index=False)

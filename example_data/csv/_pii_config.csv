@@ -1,0 +1,8 @@
+table,column,pii_type,strategy
+klanten,naam,PERSON,force
+klanten,email,EMAIL_ADDRESS,force
+klanten,bsn,BSN,force
+klanten,telefoon,NL_PHONE,force
+klanten,postcode,NL_POSTCODE,force
+orders,datum,NONE,skip
+orderlines,product,NONE,skip
