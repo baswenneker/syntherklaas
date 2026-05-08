@@ -21,4 +21,4 @@ skills/engineering/syntherklaas/scripts/uv.lock
 # Tool/agent artefacts
 .playwright-mcp/
 repo-structure.md
-./.tmp/
+tmp/
