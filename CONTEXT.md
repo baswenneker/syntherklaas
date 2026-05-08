@@ -20,4 +20,4 @@ A table with no outgoing foreign keys (i.e., it doesn't depend on any other tabl
 A meta-table delivered alongside the data — `_relations` for FK declarations, `_pii_config` for PII type forcing or skipping. Lives inline in the input package (extra Excel tab, or extra CSV in the same directory). Distinguished by the leading underscore.
 
 ### Append mode
-Writing to an existing SQLite DB without PK collisions. The pipeline reads `MAX(id)` per table, assigns new output IDs starting after that, and rewrites child FK columns to point at the new parent IDs. Schema mismatch fails fast with exit code 2.
+**(SQLite output only.)** Writing to an existing SQLite DB without PK collisions. The pipeline reads `MAX(id)` per table, assigns new output IDs starting after that, and rewrites child FK columns to point at the new parent IDs. Schema mismatch fails fast with exit code 2. XLSX output is new-only — `--mode append` combined with `.xlsx` exits with code 2.

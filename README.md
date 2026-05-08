@@ -7,7 +7,7 @@
 Real data is the fastest way to prototype.<br>
 GDPR is the fastest way to get blocked.
 
-`syntherklaas` resolves both: feed it an Excel file or CSV directory of production data and it returns a SQLite database with names, emails, phone numbers, BSNs, postcodes, and IBANs replaced by Dutch fakes — while preserving table shapes, foreign keys, and value coherence so your queries behave the same.
+`syntherklaas` resolves both: feed it an Excel file or CSV directory of production data and it returns a SQLite database — or a multi-sheet Excel file — with names, emails, phone numbers, BSNs, postcodes, and IBANs replaced by Dutch fakes, while preserving table shapes, foreign keys, and value coherence so your queries behave the same.
 
 Packaged as a [Claude Code](https://claude.ai/code) skill, built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
 
@@ -25,7 +25,7 @@ After installation, restart Claude Code (or open a new session). The skill regis
 
 | Category | Skill | Description |
 | --- | --- | --- |
-| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Generate synthetic data from Excel (multi-tab) or a directory of CSVs into a SQLite database with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. |
+| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Generate synthetic data from Excel (multi-tab) or a directory of CSVs into a SQLite database or multi-sheet `.xlsx` file with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. Output format is inferred from the extension. |
 
 ## How to invoke
 
@@ -35,9 +35,13 @@ From Claude Code, either invoke directly:
 /syntherklaas
 ```
 
-Or describe the task — Claude triggers the skill via its description (matches phrases like *synthetic data*, *fake data*, *anonymize*, *Excel/CSV to SQLite*, *BSN-safe test data*):
+Or describe the task — Claude triggers the skill via its description (matches phrases like *synthetic data*, *fake data*, *anonymize*, *Excel/CSV to SQLite or XLSX*, *BSN-safe test data*):
 
 > Anonymize `example_data/xlsx/example_data.xlsx` into `./demo.db`, capped at 50 root rows.
+
+Or, for an Excel-format output:
+
+> Anonymize `example_data/xlsx/example_data.xlsx` into `./demo.xlsx`, capped at 50 root rows.
 
 The skill loads its own instructions from `SKILL.md`, runs the pipeline (detect → resolve FKs → sample → anonymize → write), and reports per-column PII detection, FK resolution, row counts, and ID ranges.
 
@@ -76,7 +80,7 @@ Invocation (no `--max-rows` cap, all input is processed):
 ```bash
 bash skills/engineering/syntherklaas/scripts/run.sh \
   --input ./example_data/csv \
-  --db ./tmp/example_data.db
+  --output ./tmp/example_data.db
 ```
 
 Pipeline report:
@@ -127,6 +131,34 @@ id  naam                     email                           bsn        telefoon
 
 All five PII types are replaced (names → Dutch fakes, emails → `@example.{org,com}` with domain fully replaced, BSNs pass 11-proof checksum, phones in `06-XXXXXXXX` format, postcodes in `1234 XX` format). Foreign keys remain consistent: `orderlines.order_id → orders.id → klanten.id` joins still return the same logical pairs as the input, just with the fake names.
 
+#### Or with xlsx output
+
+Swap the extension on `--output` to `.xlsx` and the pipeline writes a multi-sheet Excel file instead (one sheet per table, topological order, frozen header row):
+
+```bash
+bash skills/engineering/syntherklaas/scripts/run.sh \
+  --input ./example_data/csv \
+  --output ./tmp/example_data.xlsx
+```
+
+The pipeline report is identical; the final write step prints `XLSX write:` instead of `SQLite write:`. Read the result back with pandas to verify the same FK joins still hold:
+
+```python
+>>> import pandas as pd
+>>> sheets = pd.read_excel("./tmp/example_data.xlsx", sheet_name=None)
+>>> list(sheets)
+['klanten', 'orders', 'orderlines']
+>>> sheets["klanten"][["id", "naam", "email", "bsn"]].head()
+   id                     naam                          email        bsn
+0   1               Tom Mulder      van-ommerenben@example.org  372941631
+1   2     Liza van de Weterink           kde-bruin@example.org  219225060
+2   3        Lisanne Oosterhek             ejones@example.com  750586461
+3   4              Joy die Bont               ties93@example.org  951873246
+4   5  Dean Garret-de Strigter   dylanovan-boulogne@example.org  580059145
+```
+
+`--mode append` is not supported for `.xlsx` output (the pipeline exits with code 2). Re-run against a new path instead.
+
 ## Input format
 
 - **Excel**: one tab per table. Optional meta-tabs `_relations` (FK overrides) and `_pii_config` (PII overrides).
@@ -164,16 +196,16 @@ Input (xlsx tabs / csv dir + optional _relations / _pii_config)
    │
    ▼
 1. Detect PII columns         (Presidio + custom NL recognizers + override)
-2. Resolve FKs (topo-sort)    (DB-schema > _relations > auto-infer)
+2. Resolve FKs (topo-sort)    (SQLite schema (append) > _relations > auto-infer)
 3. Sample (cap-only first-N)  (children follow via FK-filter)
 4. Anonymize PII              (FakerAnonymizer with shared entity_mapping)
-5. Write to SQLite            (ID-offset + FK rewrite, schema-mismatch fail-fast)
-   │
+5. Write output               (.db/.sqlite via sqlite_writer; .xlsx via xlsx_writer)
+   │                          (ID-offset + FK rewrite; SQLite supports append, XLSX is new-only)
    ▼
-SQLite + human-readable report
+SQLite or XLSX + human-readable report
 ```
 
-The shared `entity_mapping` is the key to consistency: same input value always yields the same fake within a run, both across rows of one table and across tables (so a customer's anonymized name in `klanten.naam` matches their name in `orders.klant_naam`). FKs stay intact through per-table ID-offset rewriting; new IDs start at `MAX(id)+1` in append-mode.
+The shared `entity_mapping` is the key to consistency: same input value always yields the same fake within a run, both across rows of one table and across tables (so a customer's anonymized name in `klanten.naam` matches their name in `orders.klant_naam`). FKs stay intact through per-table ID-offset rewriting; for SQLite append-mode, new IDs start at `MAX(id)+1`; for XLSX (new-only), IDs always start at 1.
 
 ## Tests
 
@@ -183,7 +215,7 @@ uv sync
 uv run pytest -v
 ```
 
-21 unit tests cover BSN 11-proof, anonymizer mapping consistency cross-row + cross-table, FK auto-inference + cyclic + composite detection, and SQLite ID-offset + FK rewrite + schema-mismatch.
+Unit tests cover BSN 11-proof, anonymizer mapping consistency cross-row + cross-table, FK auto-inference + cyclic + composite detection, SQLite ID-offset + FK rewrite + schema-mismatch, XLSX writer (ID-offset on new file, FK rewrite, NaN passthrough, empty table, sheet-name limit, topological sheet order, output-exists guard), and CLI pre-flight checks (unsupported extension, identical input/output paths, `--mode append` with xlsx, output already exists).
 
 ## Adding more skills to this plugin
 
@@ -203,13 +235,20 @@ cd skills/engineering/syntherklaas/scripts
 uv sync
 uv run python -m spacy download nl_core_news_md
 
+# SQLite output (supports --mode append on existing DBs)
 uv run python syntherklaas.py \
   --input /path/to/data.xlsx \
-  --db /path/to/output.sqlite \
+  --output /path/to/output.sqlite \
+  --max-rows 100
+
+# Excel output (multi-sheet, new file only)
+uv run python syntherklaas.py \
+  --input /path/to/data.xlsx \
+  --output /path/to/output.xlsx \
   --max-rows 100
 ```
 
-Exit codes: `0` ok, `2` schema mismatch, `3` cyclic / composite FK, `4` missing dependencies.
+Exit codes: `0` ok, `2` schema mismatch / mode conflict / invalid output target, `3` cyclic / composite FK, `4` missing dependencies.
 
 ## Related
 

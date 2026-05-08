@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test: generate sample → run pipeline → verify with JOIN query.
+# End-to-end smoke test: generate sample → run pipeline (both output formats) → verify.
 set -euo pipefail
 
 EXAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,28 +31,28 @@ echo ">>> Generating sample input..."
 uv run python "${EXAMPLES_DIR}/generate_sample.py"
 echo
 
-DB_XLSX="/tmp/syntherklaas-demo-xlsx.db"
-DB_CSV="/tmp/syntherklaas-demo-csv.db"
-rm -f "${DB_XLSX}" "${DB_CSV}"
+DB_OUT="/tmp/syntherklaas-demo.db"
+XLSX_OUT="/tmp/syntherklaas-demo.xlsx"
+rm -f "${DB_OUT}" "${XLSX_OUT}"
 
-echo ">>> Pipeline 1/2: Excel input -> ${DB_XLSX} (cap 50 klanten)"
+echo ">>> Pipeline 1/2: xlsx-input -> sqlite-output (${DB_OUT}, cap 50)"
 uv run python syntherklaas.py \
     --input "${PROJECT_ROOT}/example_data/xlsx/example_data.xlsx" \
-    --db "${DB_XLSX}" \
+    --output "${DB_OUT}" \
     --max-rows 50
 
 echo
-echo ">>> Pipeline 2/2: CSV input -> ${DB_CSV} (cap 50 klanten)"
+echo ">>> Pipeline 2/2: csv-input -> xlsx-output (${XLSX_OUT}, cap 50)"
 uv run python syntherklaas.py \
     --input "${PROJECT_ROOT}/example_data/csv" \
-    --db "${DB_CSV}" \
+    --output "${XLSX_OUT}" \
     --max-rows 50
 
 echo
-echo ">>> Sanity check on ${DB_XLSX}:"
+echo ">>> Sanity check on ${DB_OUT} (sqlite3):"
 uv run python - <<PY
 import sqlite3
-conn = sqlite3.connect("${DB_XLSX}")
+conn = sqlite3.connect("${DB_OUT}")
 print(f"  klanten:    {conn.execute('SELECT COUNT(*) FROM klanten').fetchone()[0]} rows")
 print(f"  orders:     {conn.execute('SELECT COUNT(*) FROM orders').fetchone()[0]} rows")
 print(f"  orderlines: {conn.execute('SELECT COUNT(*) FROM orderlines').fetchone()[0]} rows")
@@ -68,6 +68,27 @@ for naam, n in rows:
 PY
 
 echo
-echo ">>> Done. Output DBs:"
-echo "  - ${DB_XLSX}"
-echo "  - ${DB_CSV}"
+echo ">>> Sanity check on ${XLSX_OUT} (pandas readback):"
+uv run python - <<PY
+import pandas as pd
+sheets = pd.read_excel("${XLSX_OUT}", sheet_name=None)
+print(f"  klanten:    {len(sheets['klanten'])} rows")
+print(f"  orders:     {len(sheets['orders'])} rows")
+print(f"  orderlines: {len(sheets['orderlines'])} rows")
+print()
+print("  Top 5 klanten by order count (verifies FK joins work + names are anonymized):")
+top = (
+    sheets["orders"].groupby("klant_id").size().rename("n_orders")
+    .reset_index()
+    .merge(sheets["klanten"][["id", "naam"]], left_on="klant_id", right_on="id")
+    .sort_values("n_orders", ascending=False)
+    .head(5)
+)
+for _, r in top.iterrows():
+    print(f"    {r['naam']!r}: {int(r['n_orders'])} orders")
+PY
+
+echo
+echo ">>> Done. Output files:"
+echo "  - ${DB_OUT}"
+echo "  - ${XLSX_OUT}"

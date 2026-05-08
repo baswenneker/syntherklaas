@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import pathlib
 import sys
 from typing import Dict, Optional, Tuple
 
@@ -22,9 +23,19 @@ from fk_resolver import (
 from sampler import format_report as format_sample_report, sample
 from sqlite_writer import (
     SchemaMismatchError,
-    format_report as format_write_report,
-    write,
+    format_report as format_sqlite_report,
+    write as sqlite_write,
 )
+from xlsx_writer import (
+    OutputExistsError,
+    TableNameTooLongError,
+    format_report as format_xlsx_report,
+    write as xlsx_write,
+)
+
+SQLITE_EXTS = (".db", ".sqlite")
+XLSX_EXTS = (".xlsx",)
+SUPPORTED_EXTS = SQLITE_EXTS + XLSX_EXTS
 
 EXIT_OK = 0
 EXIT_SCHEMA_MISMATCH = 2
@@ -54,17 +65,23 @@ def load_input(
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="syntherklaas",
-        description="Synthetic data pipeline: Excel/CSV -> PII-anonymize -> SQLite.",
+        description="Synthetic data pipeline: Excel/CSV -> PII-anonymize -> SQLite or XLSX.",
     )
     parser.add_argument("--input", required=True, help="Path to .xlsx or directory of .csv files")
-    parser.add_argument("--db", required=True, help="Path to SQLite output (created if missing)")
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Path to output file. Format inferred from extension: "
+        ".db/.sqlite -> SQLite, .xlsx -> Excel.",
+    )
     parser.add_argument("--max-rows", type=int, default=None, help="Cap root tables at N rows")
     parser.add_argument(
         "--mode",
         choices=["auto", "append", "new"],
         default="auto",
-        help="auto (default): append if DB exists else create new. "
-        "append: require DB exists. new: require DB does not exist.",
+        help="auto (default): append if output exists else create new. "
+        "append: require output exists (SQLite only; xlsx output is new-only). "
+        "new: require output does not exist.",
     )
     parser.add_argument(
         "--spacy-model",
@@ -77,13 +94,48 @@ def parse_args(argv=None) -> argparse.Namespace:
 def main(argv=None) -> int:
     args = parse_args(argv)
 
-    db_exists = os.path.exists(args.db)
-    if args.mode == "new" and db_exists:
-        print(f"ERROR: --mode new but DB already exists: {args.db}", file=sys.stderr)
+    output_ext = pathlib.Path(args.output).suffix.lower()
+    if output_ext not in SUPPORTED_EXTS:
+        print(
+            f"ERROR: unsupported output extension '{output_ext}'. "
+            f"Use one of {SUPPORTED_EXTS}.",
+            file=sys.stderr,
+        )
         return EXIT_SCHEMA_MISMATCH
-    if args.mode == "append" and not db_exists:
-        print(f"ERROR: --mode append but DB does not exist: {args.db}", file=sys.stderr)
+
+    if os.path.exists(args.input) and os.path.exists(args.output) and (
+        os.path.realpath(args.input) == os.path.realpath(args.output)
+    ):
+        print("ERROR: input and output paths are identical", file=sys.stderr)
         return EXIT_SCHEMA_MISMATCH
+
+    is_xlsx = output_ext in XLSX_EXTS
+    output_exists = os.path.exists(args.output)
+
+    if is_xlsx and args.mode == "append":
+        print(
+            "ERROR: --mode append is not supported for xlsx output (xlsx is new-only)",
+            file=sys.stderr,
+        )
+        return EXIT_SCHEMA_MISMATCH
+
+    if is_xlsx and output_exists:
+        print(f"ERROR: output xlsx already exists: {args.output}", file=sys.stderr)
+        return EXIT_SCHEMA_MISMATCH
+
+    if not is_xlsx:
+        if args.mode == "new" and output_exists:
+            print(
+                f"ERROR: --mode new but output already exists: {args.output}",
+                file=sys.stderr,
+            )
+            return EXIT_SCHEMA_MISMATCH
+        if args.mode == "append" and not output_exists:
+            print(
+                f"ERROR: --mode append but output does not exist: {args.output}",
+                file=sys.stderr,
+            )
+            return EXIT_SCHEMA_MISMATCH
 
     tables, relations_df, pii_config_df = load_input(args.input)
     print(f"Loaded {len(tables)} tables from {args.input}:")
@@ -103,8 +155,9 @@ def main(argv=None) -> int:
     print(format_pii_report(pii_map, tables))
     print()
 
+    db_path_for_fks = args.output if (output_exists and not is_xlsx) else None
     try:
-        fks = resolve_fks(tables, relations_df, args.db if db_exists else None)
+        fks = resolve_fks(tables, relations_df, db_path_for_fks)
         topo_order = topological_sort(list(tables.keys()), fks)
     except (CompositeForeignKeyError, CyclicForeignKeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -133,13 +186,17 @@ def main(argv=None) -> int:
     print()
 
     try:
-        id_map = write(anonymized, fks, topo_order, args.db)
-    except SchemaMismatchError as exc:
+        if is_xlsx:
+            id_map = xlsx_write(anonymized, fks, topo_order, args.output)
+            print(format_xlsx_report(id_map))
+        else:
+            id_map = sqlite_write(anonymized, fks, topo_order, args.output)
+            print(format_sqlite_report(id_map))
+    except (SchemaMismatchError, OutputExistsError, TableNameTooLongError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return EXIT_SCHEMA_MISMATCH
 
-    print(format_write_report(id_map))
-    print(f"\nDone. Written to {args.db}")
+    print(f"\nDone. Written to {args.output}")
     return EXIT_OK
 
 

@@ -4,7 +4,7 @@ Repo-level instructions for agents working in `syntherklaas`.
 
 ## Purpose
 
-`syntherklaas` is a single-skill Claude Code plugin: it ships one skill (`syntherklaas`) that turns Excel or CSV input into anonymized SQLite output. The repo also contains the supporting Python pipeline (Presidio + Faker) under the skill's `scripts/` folder.
+`syntherklaas` is a single-skill Claude Code plugin: it ships one skill (`syntherklaas`) that turns Excel or CSV input into anonymized SQLite or XLSX output. The repo also contains the supporting Python pipeline (Presidio + Faker) under the skill's `scripts/` folder.
 
 ## Repo layout
 
@@ -22,7 +22,7 @@ Skills follow the layout convention from [HeadingFWD/fwd-skills](https://github.
 
 ## Categories
 
-- **`engineering/`** — workflow tooling that touches data, code, or repo state. The current `syntherklaas` skill writes SQLite output and runs Python pipelines.
+- **`engineering/`** — workflow tooling that touches data, code, or repo state. The current `syntherklaas` skill writes SQLite or XLSX output and runs Python pipelines.
 
 ## Adding a skill
 
