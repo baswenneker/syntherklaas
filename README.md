@@ -11,6 +11,86 @@ GDPR is the fastest way to get blocked.
 
 Packaged as a [Claude Code](https://claude.ai/code) skill, built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
 
+```mermaid
+flowchart LR
+    subgraph Input["Input (real data)"]
+        I1["Excel<br/>(multi-tab)"]
+        I2["CSV directory"]
+    end
+
+    P["<b>syntherklaas</b><br/><br/>real PII → Dutch fakes<br/>FKs preserved"]
+
+    subgraph Output["Output (synthetic data)"]
+        O1["SQLite<br/>(.db / .sqlite)"]
+        O2["Excel<br/>(.xlsx, multi-sheet)"]
+    end
+
+    I1 --> P
+    I2 --> P
+    P --> O1
+    P --> O2
+```
+
+Onder de motorkap, kolom voor kolom:
+
+- **PII** (`naam`, `email`) → vervangen door Nederlandse fakes. Dezelfde input geeft altijd dezelfde fake binnen één run, zowel binnen als tussen tabellen — als `klanten.naam` "Jan de Vries" → "Tom Mulder" wordt, dan wordt "Jan de Vries" overal anders óók "Tom Mulder".
+- **Foreign keys** (`orders.klant_id`) → behouden. De fake "Tom Mulder" hangt aan dezelfde orders als de echte "Jan de Vries".
+- **Niet-PII** (`orders.datum`, `orders.bedrag`) → ongewijzigd. Aggregaties, datums, bedragen blijven identiek, dus dashboards en queries gedragen zich hetzelfde.
+
+<table>
+<tr>
+<td valign="top" width="47%">
+
+**Input — real**
+
+`klanten`
+
+| id | naam | email | leeftijd |
+| --- | --- | --- | --- |
+| 1 | Jan de Vries | jan@acme.nl | 42 |
+| 2 | Piet Janssen | piet@bedrijf.nl | 31 |
+
+`orders` *(FK: klant_id → klanten.id)*
+
+| id | klant_id | datum | bedrag |
+| --- | --- | --- | --- |
+| 100 | 1 | 2024-03-12 | €120.00 |
+| 101 | 1 | 2024-04-08 | €45.50 |
+| 102 | 2 | 2024-05-19 | €230.00 |
+| 103 | 2 | 2024-06-02 | €89.00 |
+
+</td>
+<td valign="middle" width="6%" align="center">
+
+**`syntherklaas`**
+
+━━▶
+
+</td>
+<td valign="top" width="47%">
+
+**Output — synthetic**
+
+`klanten`
+
+| id | naam | email | leeftijd |
+| --- | --- | --- | --- |
+| 1 | Tom Mulder | tom@example.org | 42 |
+| 2 | Liza van de Weterink | liza@example.com | 31 |
+
+`orders` *(FK preserved)*
+
+| id | klant_id | datum | bedrag |
+| --- | --- | --- | --- |
+| 100 | 1 | 2024-03-12 | €120.00 |
+| 101 | 1 | 2024-04-08 | €45.50 |
+| 102 | 2 | 2024-05-19 | €230.00 |
+| 103 | 2 | 2024-06-02 | €89.00 |
+
+</td>
+</tr>
+</table>
+
 ## Installation
 
 > Only tested with [Claude Code](https://claude.ai/code).
