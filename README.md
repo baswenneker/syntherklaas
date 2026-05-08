@@ -115,13 +115,17 @@ From Claude Code, either invoke directly:
 /syntherklaas
 ```
 
-Or describe the task — Claude triggers the skill via its description (matches phrases like *synthetic data*, *fake data*, *anonymize*, *Excel/CSV to SQLite or XLSX*, *BSN-safe test data*):
+Or include the task on the same line — Claude triggers the skill via its description (matches phrases like *synthetic data*, *fake data*, *anonymize*, *Excel/CSV to SQLite or XLSX*, *BSN-safe test data*):
 
-> Anonymize `example_data/xlsx/example_data.xlsx` into `./demo.db`, capped at 50 root rows.
+```
+/syntherklaas Anonymize example_data/xlsx/example_data.xlsx into ./demo.db, capped at 50 root rows.
+```
 
 Or, for an Excel-format output:
 
-> Anonymize `example_data/xlsx/example_data.xlsx` into `./demo.xlsx`, capped at 50 root rows.
+```
+/syntherklaas Anonymize example_data/xlsx/example_data.xlsx into ./demo.xlsx, capped at 50 root rows.
+```
 
 The skill loads its own instructions from `SKILL.md`, runs the pipeline (detect → resolve FKs → sample → anonymize → write), and reports per-column PII detection, FK resolution, row counts, and ID ranges.
 
@@ -149,9 +153,8 @@ bash skills/engineering/syntherklaas/examples/run-example.sh
 That script regenerates the demo, runs both variants through the pipeline, and prints a JOIN sanity check showing fake Dutch names with their order counts. You can also point Claude at the demo files directly:
 
 ```
-/syntherklaas
+/syntherklaas Run the pipeline on example_data/xlsx/example_data.xlsx into ./demo.db.
 ```
-> "Run the pipeline on `example_data/xlsx/example_data.xlsx` into `./demo.db`."
 
 ### Example run on `example_data/csv/`
 
