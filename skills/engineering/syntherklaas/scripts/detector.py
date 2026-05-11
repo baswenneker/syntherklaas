@@ -24,6 +24,17 @@ _BSN_COLUMN_ALIASES = frozenset({"bsn", "burgerservicenummer", "sofinummer", "so
 # not flip the column, but tolerant of a few stray invalid entries.
 _BSN_NUMERIC_THRESHOLD = 0.8
 
+# Column-name aliases for Dutch split-name columns. Presidio's PERSON
+# recogniser fires on free-form name strings ("Jan Jansen") and tends to
+# miss single-part columns ("Jan", "van der", "Jansen"). When a column is
+# explicitly named for one part, the column name is a stronger signal than
+# any cell-level analysis, so these hints override Presidio.
+_SPLIT_NAME_ALIASES: Dict[str, frozenset] = {
+    "NL_VOORNAAM": frozenset({"voornaam", "firstname", "givenname"}),
+    "NL_TUSSENVOEGSEL": frozenset({"tussenvoegsel"}),
+    "NL_ACHTERNAAM": frozenset({"achternaam", "lastname", "surname", "familyname"}),
+}
+
 
 def build_analyzer(spacy_model: str = "nl_core_news_md"):
     """Build an NL-configured Presidio AnalyzerEngine with our custom recognizers."""
@@ -90,12 +101,29 @@ def _numeric_columns_with_bsn_values(
     return result
 
 
+def _split_name_column_overrides(df: pd.DataFrame) -> Dict[str, str]:
+    """Columns whose name identifies them as one part of a split person name."""
+    result: Dict[str, str] = {}
+    for col in df.columns:
+        norm = _normalize_column_name(col)
+        for entity_type, aliases in _SPLIT_NAME_ALIASES.items():
+            if norm in aliases:
+                result[col] = entity_type
+                break
+    return result
+
+
 def detect_pii_for_table(df: pd.DataFrame, analyzer) -> Dict[str, str]:
     """Run presidio-structured analysis on a single DataFrame.
 
     Text columns go through Presidio. Numeric columns are scanned separately
     for BSN — Presidio can only see strings, so a column Excel exported as
     numbers (no text formatting) would otherwise slip through.
+
+    Split-name column overrides are applied after Presidio: when a column is
+    explicitly named ``voornaam`` / ``tussenvoegsel`` / ``achternaam``, the
+    column name is a stronger signal than Presidio's PERSON heuristic (which
+    would generate a full name into a single-part column).
 
     Returns: ``{column_name: entity_type}`` for columns where PII was detected.
     """
@@ -113,6 +141,8 @@ def detect_pii_for_table(df: pd.DataFrame, analyzer) -> Dict[str, str]:
     bsn_fallback = _columns_named_like_bsn(df) | _numeric_columns_with_bsn_values(df)
     for col in bsn_fallback:
         detected.setdefault(col, "BSN")
+
+    detected.update(_split_name_column_overrides(df))
 
     return detected
 

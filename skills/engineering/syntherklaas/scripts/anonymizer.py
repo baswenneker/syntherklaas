@@ -32,6 +32,25 @@ class NlExtraProvider(BaseProvider):
 
     _BSN_WEIGHTS = (9, 8, 7, 6, 5, 4, 3, 2)
     _POSTCODE_FORBIDDEN = {"SS", "SD", "SA"}
+    # Common Dutch surname prefixes. Empty string is intentionally weighted
+    # high because most names do not have one — a uniform random pick would
+    # over-represent prefixes vs. realistic NL distributions.
+    _TUSSENVOEGSELS = (
+        "",
+        "",
+        "",
+        "",
+        "",
+        "van",
+        "van de",
+        "van der",
+        "van den",
+        "de",
+        "den",
+        "der",
+        "ten",
+        "te",
+    )
 
     def bsn(self) -> str:
         for _ in range(50):
@@ -56,6 +75,9 @@ class NlExtraProvider(BaseProvider):
     def nl_phone(self) -> str:
         return "06-" + "".join(str(self.random_digit()) for _ in range(8))
 
+    def nl_tussenvoegsel(self) -> str:
+        return self.random_element(self._TUSSENVOEGSELS)
+
 
 def build_faker(locale: str = "nl_NL") -> Faker:
     """Construct a Faker with the NL extra provider registered."""
@@ -67,6 +89,9 @@ def build_faker(locale: str = "nl_NL") -> Faker:
 SUPPORTED_TYPES = frozenset(
     {
         "PERSON",
+        "NL_VOORNAAM",
+        "NL_TUSSENVOEGSEL",
+        "NL_ACHTERNAAM",
         "EMAIL",
         "EMAIL_ADDRESS",
         "PHONE_NUMBER",
@@ -90,6 +115,12 @@ def _generate_fake(entity_type: str, faker: Faker, original: str) -> str:
     et = entity_type.upper()
     if et == "PERSON":
         return faker.name()
+    if et == "NL_VOORNAAM":
+        return faker.first_name()
+    if et == "NL_TUSSENVOEGSEL":
+        return faker.nl_tussenvoegsel()
+    if et == "NL_ACHTERNAAM":
+        return faker.last_name()
     if et in ("EMAIL", "EMAIL_ADDRESS"):
         return faker.email()
     if et in ("PHONE_NUMBER", "NL_PHONE"):

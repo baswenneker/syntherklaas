@@ -62,3 +62,42 @@ def test_nan_passthrough():
 
     assert pd.isna(out.iloc[1]["naam"])
     assert out.iloc[0]["naam"] != "Jan"
+
+
+def test_split_name_columns_each_get_type_appropriate_fakes():
+    """voornaam / tussenvoegsel / achternaam each get a single-part fake,
+    not a full PERSON name dropped into every column."""
+    df = pd.DataFrame(
+        {
+            "voornaam": ["Jan", "Anna"],
+            "tussenvoegsel": ["van der", "de"],
+            "achternaam": ["Vries", "Jong"],
+        }
+    )
+    pii_map = {
+        ("klanten", "voornaam"): "NL_VOORNAAM",
+        ("klanten", "tussenvoegsel"): "NL_TUSSENVOEGSEL",
+        ("klanten", "achternaam"): "NL_ACHTERNAAM",
+    }
+    entity_mapping: dict = {}
+    out = anonymize_dataframe(df, "klanten", pii_map, entity_mapping, build_faker())
+
+    assert list(out["voornaam"]) != ["Jan", "Anna"]
+    assert list(out["achternaam"]) != ["Vries", "Jong"]
+
+    valid_tussenvoegsels = {
+        "", "van", "van de", "van der", "van den",
+        "de", "den", "der", "ten", "te",
+    }
+    for t in out["tussenvoegsel"]:
+        assert t in valid_tussenvoegsels, f"unexpected tussenvoegsel {t!r}"
+
+
+def test_split_name_consistency_within_column():
+    df = pd.DataFrame({"voornaam": ["Jan", "Jan", "Anna"]})
+    pii_map = {("klanten", "voornaam"): "NL_VOORNAAM"}
+    entity_mapping: dict = {}
+    out = anonymize_dataframe(df, "klanten", pii_map, entity_mapping, build_faker())
+
+    assert out.iloc[0]["voornaam"] == out.iloc[1]["voornaam"]
+    assert out.iloc[0]["voornaam"] != out.iloc[2]["voornaam"]
