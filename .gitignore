@@ -22,3 +22,6 @@ skills/engineering/syntherklaas/scripts/uv.lock
 .playwright-mcp/
 repo-structure.md
 tmp/
+
+.claude/issue-loop
+.claude/scheduled_tasks.lock
