@@ -23,6 +23,17 @@ skills/engineering/syntherklaas/scripts/uv.lock
 repo-structure.md
 tmp/
 
-.claude/issue-loop
-.claude/scheduled_tasks.lock
+# Claude Code per-user settings (machine-local, do not share)
+.claude/settings.local.json
+
+# fwd:setup:gitignore:start (managed by /fwd:setup — do not edit manually)
+# fwd:issue-fix runtime: worktree dir + JSON state ledger.
+# Without these gitignored, preflight rejects every tick on a clean repo
+# because the state file it just wrote shows up as untracked.
 .trees/
+.claude/issue-loop/
+
+# Claude Code /loop scheduling state. Recreated on every ScheduleWakeup,
+# so it permanently dirties the tree unless ignored.
+.claude/scheduled_tasks.lock
+# fwd:setup:gitignore:end
