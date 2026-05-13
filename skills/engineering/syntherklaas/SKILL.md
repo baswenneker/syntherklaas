@@ -1,94 +1,160 @@
 ---
 name: syntherklaas
-description: Generate synthetic data from Excel (multi-tab) or a directory of CSV files into a SQLite database or Excel (.xlsx) file with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. Output format is inferred from the extension (.db/.sqlite or .xlsx). Use when the user wants to anonymize business data, create test or demo data from production samples, convert Excel or CSV input into SQLite or XLSX with fake but coherent values, or mentions "synthetic data", "fake data", "anonymize", "BSN-safe test data", or refers to multi-table data with FK relations.
+description: Generate synthetic data from scratch through an interactive dialog — ask the user table-by-table about columns, types, foreign keys, and constraints; render the data model as ASCII UML; ask for volume + distributions; then generate consistent fake data with Faker (locale-aware) + NL-locked providers for BSN/IBAN/postcode. Outputs CSV (loose files), XLSX (loose or multi-sheet), or SQLite. Schema can be saved to YAML for re-invoke (`/syntherklaas <yaml-path>` skips the dialog, runs deterministic generation). Use when the user wants test data, demo data, fake data with FK relations, or mentions "synthetic data", "fake data", "test data", "demo dataset", "BSN-safe test data", or "anonimiseer me een schema".
 ---
 
 # syntherklaas
 
-Pipeline: Excel/CSV → detect PII + FKs → topo-sort → sample → anonymize → SQLite or XLSX.
+Interactive synthetic data generator. Two invocation paths:
 
-PII (PERSON / EMAIL / PHONE_NUMBER / BSN / POSTCODE / IBAN) is replaced with consistent fakes within one run — same input value always maps to the same fake, across rows and across tables. Foreign-key relations are preserved via per-table ID-offset and FK-rewriting.
+1. **Full dialog** (`/syntherklaas`) — build the data model from scratch.
+2. **Re-invoke** (`/syntherklaas <yaml-path>`) — load a previously-saved schema, confirm, run.
 
-Output format is selected via the `--output` extension: `.db` or `.sqlite` writes a SQLite database (supports `--mode append`); `.xlsx` writes a multi-sheet Excel file (always new — append is not supported for xlsx).
+Pipeline: dialog → schema-YAML → Faker + numpy (deterministic seed) → topo-ordered DataFrames → writer (CSV-loose / XLSX-loose / XLSX-multi / SQLite).
 
-## Quick start
+## Dispatch
 
-```bash
-# First run only: install deps and Spacy NL model
-bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" --help
+When the user invokes the skill, branch on the argument:
 
-# Anonymize an Excel file into a new SQLite DB
-bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" \
-  --input ./mydata.xlsx \
-  --output ./mydata.sqlite
+- **Argument is a `.yaml` or `.yml` file that exists** → go to **Re-invoke path** below.
+- **No argument, or other text** → go to **Full dialog path** below.
 
-# Same input, but write to a new Excel file (multi-sheet)
-bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" \
-  --input ./mydata.xlsx \
-  --output ./mydata-anonymized.xlsx
+---
 
-# CSV directory + cap to 100 root rows
-bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" \
-  --input ./mydata/ \
-  --output ./mydata.sqlite \
-  --max-rows 100
+## Re-invoke path
 
-# Append to existing SQLite DB (default = auto: append if file exists, else new)
-# NOTE: --mode append is SQLite-only; combining it with .xlsx exits with code 2.
-bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" \
-  --input ./more.xlsx \
-  --output ./existing.sqlite \
-  --mode append
+1. Load the YAML via `bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" --schema <path> --preview` to validate it and obtain a JSON preview (the script returns exit code 2 on a malformed YAML).
+2. Render a confirmation summary in chat — list the tables, locale, seed, output target (from the YAML's `output` block if present), and a 10-row preview per table.
+3. Ask: **"OK om te genereren? (ok / annuleer)"**.
+4. On `ok`:
+   - If the YAML already has an `output` block, run `bash ${CLAUDE_SKILL_DIR}/scripts/run.sh --schema <path>` (it picks up format+path from the YAML).
+   - Otherwise ask the user for format + path, then run `bash ${CLAUDE_SKILL_DIR}/scripts/run.sh --schema <path> --output <out> --format <fmt>`.
+5. On `annuleer` — stop.
+
+---
+
+## Full dialog path
+
+Greet the user briefly, then proceed through the phases below. The user may say "stop" at any point to abort.
+
+### Phase 0 — Locale
+
+Ask: **"Faker-locale? (default: `nl_NL` — accepteert bv. `en_US`, `de_DE`, `fr_FR`, ...)"**
+
+Note: NL-locked providers (`nl.bsn`, `nl.iban`, `nl.postcode`, `nl.phone`, `nl.tussenvoegsel`) always emit NL-formatted values regardless of session locale. Mention this if the user picks non-NL and the schema later includes any `nl.*` provider.
+
+### Phase 1 — Schema discovery (loop per table)
+
+For each table:
+
+1. Ask: **"Tabelnaam?"**
+2. Ask: **"Heb je voorbeeld-data om te paste'n, of definiëren we kolommen samen?"**
+3. Branch:
+   - **Paste**: user pastes CSV-like rows or freeform examples. Extract column names + 1-5 sample values per column.
+   - **Guided**: loop "kolomnaam? voorbeeld(en)? volgende of klaar?" until the user signals done.
+4. Based on column names + sample values, **infer a provider per column** from this table:
+
+   | Provider name             | When to pick |
+   |---------------------------|--------------|
+   | `sequential` + `primary_key: true` | always for an `id` column |
+   | `faker.name`              | column looks like a person name |
+   | `faker.email`             | column looks like an email |
+   | `faker.phone_number`      | non-NL phone, or generic phone |
+   | `faker.address`           | generic address |
+   | `faker.company`           | company name |
+   | `faker.text`              | free-form text / notes |
+   | `nl.bsn`                  | NL BSN |
+   | `nl.iban`                 | NL IBAN |
+   | `nl.postcode`             | NL postal code (`1234 AB`) |
+   | `nl.phone`                | NL mobile (06-XXXXXXXX) |
+   | `nl.tussenvoegsel`        | NL surname infix |
+   | `numeric_range`           | integer/float with bounds (age, price, count, ...) |
+   | `categorical`             | small fixed set of values (status, type, ...) |
+   | `datetime_range`          | timestamp or date in a window |
+   | `fk`                      | `<table>_id` columns or otherwise clearly referencing another table |
+
+5. Render a confirm table:
+   ```
+   | col       | provider          | constraint     | voorbeeld     |
+   | id        | sequential        | PK             | 1, 2, 3, ...  |
+   | naam      | faker.name        | NOT NULL       | (Faker name)  |
+   | bsn       | nl.bsn            | UNIQUE         | 123456782     |
+   | leeftijd  | numeric_range int | min 18, max 80 | 42            |
+   | status    | categorical       | choices=[...]  | active        |
+   ```
+6. Ask: **"Klopt? (ok / wijzig kolom <naam>)"**. On wijzig: update the column and re-render, loop until ok.
+7. Ask: **"Foreign keys naar andere tabellen? (bv. `user_id → users.id` of `geen`)"**. Add as `fk`-provider columns.
+8. Ask: **"Nog een tabel of klaar?"**. Loop until `klaar`.
+
+### Phase 2 — ASCII UML
+
+Topo-sort the tables and render boxes with columns + relations with cardinality. Style:
+
+```
+┌─────────────────────────┐         ┌──────────────────────────┐
+│ users                   │ 1     * │ events                   │
+├─────────────────────────┤─────────┤──────────────────────────┤
+│ id (PK)         INT     │         │ id (PK)          INT     │
+│ naam            STR     │         │ user_id (FK)     INT ────┤
+│ bsn (UQ)        STR     │         │ kind             STR     │
+│ leeftijd        INT     │         │ occurred_at      DATETIME│
+└─────────────────────────┘         └──────────────────────────┘
 ```
 
-See `examples/` for a working 3-table demo (klanten / orders / orderlines) plus optional `_relations` and `_pii_config` meta-sheets.
+Use `1..*` notation on the edges. Ask: **"Klopt het model? (ok / wijzig <tabel>)"**.
 
-## Input format
+### Phase 3 — Volume + distributies
 
-- **Excel**: one tab per table. Optional meta-tabs `_relations` (FK overrides) and `_pii_config` (PII overrides).
-- **CSV directory**: one file per table. Optional `_relations.csv` and `_pii_config.csv` in the same directory.
+For each table in topological order:
 
-Override schemas:
+- **Root** (no FK): ask **"hoeveel rijen `<tabel>`? (vast getal, of `poisson 100`, `normal 100±10`, `uniform 80-120`)"**.
+- **Child** (has FK with `per_parent` semantics): ask **"hoeveel `<tabel>` per `<parent>`? (zelfde syntax)"**. If the user wants a flat total instead, accept that and use `count` semantics.
 
-```
-_relations:    table | column | references_table | references_column
-_pii_config:   table | column | pii_type         | strategy   (force | skip)
-```
+For each `datetime_range` column: ask **"tijdsperiode? (bv. `2024-01-01..2024-12-31`; `uniform` of `normal`)"**.
 
-Override priority for FKs: existing DB schema (SQLite append-mode only) > `_relations` > auto-infer.
-Override priority for PII: `_pii_config` (force/skip) > Presidio auto-detection.
+For each `numeric_range` column: ask **"range? (bv. `18-80 uniform` of `35±12 normal`)"**.
 
-## Workflows
+For each `categorical` column: ask **"gewichten? (`uniform` of bv. `60/30/10` voor 3 choices)"**.
 
-### Anonymize a single dataset
-1. Identify the input (Excel or CSV directory) and target output path. Output format is inferred from the extension: `.db` / `.sqlite` for SQLite, `.xlsx` for Excel.
-2. Decide whether to add `_relations` / `_pii_config` overrides.
-3. Run `scripts/run.sh --input <path> --output <path>`.
-4. Inspect the report (PII detection per column, FK resolution per relation, row counts).
+Translate user shorthand into the schema-YAML format (see `examples/demo-schema.yaml`).
 
-### Append more rows to an existing DB (SQLite only)
-1. Confirm input columns match the existing tables (skill fails fast on mismatch).
-2. Run with `--output existing.sqlite --mode append` (or default `auto` when DB exists).
-3. New rows get IDs starting from `MAX(id)+1`; FK columns are rewritten so children point at the new parent IDs.
+### Phase 4 — Build YAML + preview
 
-XLSX output does not support append — `--mode append` combined with `.xlsx` exits with code 2. Re-run with a fresh `.xlsx` path instead.
+1. Write the schema to `/tmp/syntherklaas-<sessid>/schema.yaml` (mkdir-p first; use a fresh UUID or timestamp suffix).
+2. Run: `bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" --schema /tmp/.../schema.yaml --preview`
+3. Parse the JSON preview and render Markdown tables (max 10 rows per table) in chat.
 
-### Write to a multi-sheet Excel file
-- Use `--output <path>.xlsx`. Sheet order is topological (parent → child); the header row is frozen for usability. The output path must not already exist.
+### Phase 5 — Output
 
-### Create a smaller subset
-- Pass `--max-rows N`. Cap is applied to root tables (no incoming FK); children follow via FK-filter.
+1. Ask: **"Tevreden? (`ok` / `regenerate` met andere seed / `wijzig` schema)"**.
+   - `regenerate`: edit the YAML to add a new `seed: <random_int>`, re-run preview.
+   - `wijzig`: drop back to the relevant phase (1/2/3) to edit.
+2. Ask: **"Output-formaat?"**
+   1. `csv-loose` — losse CSV-bestanden (in een directory)
+   2. `xlsx-loose` — losse XLSX-bestanden (in een directory)
+   3. `xlsx-multi` — één multi-sheet XLSX
+   4. `sqlite` — SQLite database (`.db` / `.sqlite`)
+3. Ask: **"Output-pad?"** (file for `xlsx-multi` / `sqlite`, directory for `csv-loose` / `xlsx-loose`).
+4. Update the schema-YAML to include the chosen `output: {format, path}` block.
+5. Run: `bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" --schema /tmp/.../schema.yaml --output <path> --format <fmt>`
+6. Report file paths + per-table row counts (the CLI prints these on stdout).
+
+### Phase 6 — Save schema
+
+Ask: **"Wil je dit schema opslaan voor herbruik? (geef een pad, of zeg `nee`)"**.
+
+On a path: `cp /tmp/syntherklaas-<sessid>/schema.yaml <user-path>` and confirm with:
+> "Volgende keer kun je het reproduceren met: `/syntherklaas <user-path>` — dan toon ik alleen een confirmatie en draai dezelfde generatie."
 
 ## Exit codes
 
 - `0` — success
-- `2` — schema mismatch, mode conflict, or invalid output target (e.g. unsupported extension, identical input/output paths, xlsx output already exists, `--mode append` with xlsx, table name exceeds Excel's 31-char sheet-name limit)
-- `3` — cyclic or composite FK detected
-- `4` — missing dependencies (uv / spacy model)
+- `2` — schema/output/format problem (malformed YAML, unknown provider, FK to unknown column, output path conflict, Excel limit exceeded, ...)
+- `3` — cyclic FK detected
+- `4` — missing dependencies (`uv` not on PATH)
 
 ## Reference
 
-- Pipeline modules in `scripts/`: `detector.py`, `nl_recognizers.py`, `fk_resolver.py`, `sampler.py`, `anonymizer.py`, `sqlite_writer.py`, `xlsx_writer.py`.
-- CLI entry: `scripts/syntherklaas.py`.
+- Pipeline modules in `scripts/`: `providers.py` (Faker + NL extras + numpy distributies), `schema.py` (YAML validator), `generate.py` (orchestrator + CLI), `writers.py` (dispatch), `sqlite_writer.py`, `xlsx_writer.py`, `fk_resolver.py` (topo-sort).
 - Tests: `scripts/tests/` (run via `uv run pytest`).
-- Worked example: `examples/run-example.sh`.
+- Worked example: `examples/demo-schema.yaml` (3-table klanten/orders/orderlines + distributies) + `examples/transcript.md` (session walkthrough).

@@ -17,17 +17,14 @@ if ! command -v uv >/dev/null 2>&1; then
     exit 4
 fi
 
-# First-run install: marker file in .venv signals deps + spacy model are ready.
+# First-run install: marker file in .venv signals deps are synced.
 INSTALL_MARKER=".venv/.syntherklaas-installed"
 if [[ ! -f "${INSTALL_MARKER}" ]]; then
-    echo ">>> First run: syncing dependencies via uv..."
-    uv sync
-    echo ">>> Downloading Spacy NL model (nl_core_news_md, ~43MB)..."
-    uv run python -m spacy download nl_core_news_md
+    echo ">>> First run: syncing dependencies via uv..." >&2
+    uv sync >&2
     mkdir -p "$(dirname "${INSTALL_MARKER}")"
     touch "${INSTALL_MARKER}"
-    echo ">>> First-run install complete."
-    echo
+    echo ">>> First-run install complete." >&2
 fi
 
-exec uv run python "${SCRIPTS_DIR}/syntherklaas.py" "$@"
+exec uv run python "${SCRIPTS_DIR}/generate.py" "$@"

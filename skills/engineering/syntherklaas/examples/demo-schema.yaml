@@ -1,0 +1,97 @@
+# Demo schema for syntherklaas — 3-tier model met klanten, orders en orderlines.
+#
+# Run met:
+#   bash skills/engineering/syntherklaas/scripts/run.sh \
+#       --schema skills/engineering/syntherklaas/examples/demo-schema.yaml \
+#       --preview
+#
+# Of voor een echte run (output zit in dit schema, geen --output/--format nodig):
+#   bash skills/engineering/syntherklaas/scripts/run.sh \
+#       --schema skills/engineering/syntherklaas/examples/demo-schema.yaml
+#
+# Aanroep vanuit Claude Code: /syntherklaas <pad-naar-dit-bestand> →
+# skill toont samenvatting + preview en vraagt 1× confirmatie.
+
+version: 1
+locale: nl_NL
+seed: 42
+
+output:
+  format: sqlite
+  path: ./demo.db
+
+tables:
+  - name: klanten
+    columns:
+      - { name: id,        provider: sequential, primary_key: true }
+      - { name: naam,      provider: faker.name }
+      - { name: bsn,       provider: nl.bsn,         unique: true }
+      - { name: email,     provider: faker.email,    unique: true }
+      - { name: postcode,  provider: nl.postcode }
+      - { name: telefoon,  provider: nl.phone }
+      - name: leeftijd
+        provider: numeric_range
+        type: int
+        min: 18
+        max: 80
+        distribution: normal
+        mean: 42
+        stddev: 15
+      - name: geregistreerd_op
+        provider: datetime_range
+        start: "2020-01-01"
+        end:   "2024-12-31"
+        distribution: uniform
+    volume:
+      count:
+        distribution: fixed
+        value: 50
+
+  - name: orders
+    columns:
+      - { name: id,         provider: sequential, primary_key: true }
+      - { name: klant_id,   provider: fk, references: klanten.id }
+      - name: datum
+        provider: datetime_range
+        start: "2024-01-01"
+        end:   "2024-12-31"
+        distribution: uniform
+      - name: status
+        provider: categorical
+        choices: [open, closed, cancelled]
+        weights: [0.60, 0.30, 0.10]
+    volume:
+      per_parent:
+        parent: klanten
+        distribution: poisson
+        lambda: 4
+        min: 0
+
+  - name: orderlines
+    columns:
+      - { name: id,        provider: sequential, primary_key: true }
+      - { name: order_id,  provider: fk, references: orders.id }
+      - name: product
+        provider: categorical
+        choices: [boek, pen, notitieboek, agenda, kaart]
+        weights: [0.35, 0.25, 0.20, 0.15, 0.05]
+      - name: aantal
+        provider: numeric_range
+        type: int
+        min: 1
+        max: 10
+        distribution: uniform
+      - name: prijs
+        provider: numeric_range
+        type: float
+        min: 5
+        max: 500
+        distribution: lognormal
+        mean: 2.5
+        sigma: 0.8
+    volume:
+      per_parent:
+        parent: orders
+        distribution: uniform
+        min: 1
+        max: 5

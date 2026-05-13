@@ -1,4 +1,4 @@
-# Syntherklaas: skill for synthetic data generation
+# Syntherklaas: interactive synthetic data generator
 
 <p align="center">
   <img src="assets/sinterklaas.jpg" alt="Sinterklaas waving to the crowd during an intocht, wearing his red and gold mitre and purple gloves" width="640">
@@ -7,89 +7,41 @@
 Real data is the fastest way to prototype.<br>
 GDPR is the fastest way to get blocked.
 
-`syntherklaas` resolves both: feed it an Excel file or CSV directory of production data and it returns a SQLite database — or a multi-sheet Excel file — with names, emails, phone numbers, BSNs, postcodes, and IBANs replaced by Dutch fakes, while preserving table shapes, foreign keys, and value coherence so your queries behave the same.
+`syntherklaas` skips the input data step entirely: instead of feeding it a production export to anonymize, you have a short conversation with it about the shape of the data you want — tables, columns, foreign keys, volumes, distributions — and it generates a coherent synthetic dataset from scratch with [Faker](https://github.com/joke2k/faker) (locale-aware) plus NL-locked providers for BSN (11-proof), IBAN (mod-97), postcode, and phone formats.
 
-Packaged as a [Claude Code](https://claude.ai/code) skill, built on [Microsoft Presidio](https://github.com/microsoft/presidio) for column-level PII detection and [Faker](https://github.com/joke2k/faker) (`nl_NL` locale) for replacement values, with custom NL recognizers for BSN (with 11-proof checksum), Dutch IBAN, postcode, and phone formats.
+Packaged as a [Claude Code](https://claude.ai/code) skill: the dialog runs in chat, the schema is captured as a YAML, and a small Python generator turns that YAML into CSV, XLSX, or SQLite output.
 
 ```mermaid
 flowchart LR
-    subgraph Input["Input (real data)"]
-        I1["Excel<br/>(multi-tab)"]
-        I2["CSV directory"]
+    subgraph dialog["Dialog (Claude in chat)"]
+        P0["locale"]
+        P1["tables + columns + FKs"]
+        P2["ASCII UML"]
+        P3["volume + distributions"]
+    end
+    Y["schema.yaml"]
+    G["<b>generate.py</b><br/>Faker + numpy<br/>(seeded)"]
+
+    subgraph out["Output"]
+        O1["CSV<br/>(loose files)"]
+        O2["XLSX<br/>(loose or multi-sheet)"]
+        O3["SQLite<br/>(.db / .sqlite)"]
     end
 
-    P["<b>syntherklaas</b><br/><br/>real PII → Dutch fakes<br/>FKs preserved"]
-
-    subgraph Output["Output (synthetic data)"]
-        O1["SQLite<br/>(.db / .sqlite)"]
-        O2["Excel<br/>(.xlsx, multi-sheet)"]
-    end
-
-    I1 --> P
-    I2 --> P
-    P --> O1
-    P --> O2
+    dialog --> Y
+    Y --> G
+    G --> O1
+    G --> O2
+    G --> O3
 ```
 
-Onder de motorkap, kolom voor kolom:
+## How it works
 
-- **PII** (`naam`, `email`) → vervangen door Nederlandse fakes. Dezelfde input geeft altijd dezelfde fake binnen één run, zowel binnen als tussen tabellen — als `klanten.naam` "Jan de Vries" → "Tom Mulder" wordt, dan wordt "Jan de Vries" overal anders óók "Tom Mulder".
-- **Foreign keys** (`orders.klant_id`) → behouden. De fake "Tom Mulder" hangt aan dezelfde orders als de echte "Jan de Vries".
-- **Niet-PII** (`orders.datum`, `orders.bedrag`) → ongewijzigd. Aggregaties, datums, bedragen blijven identiek, dus dashboards en queries gedragen zich hetzelfde.
-
-<table>
-<tr>
-<td valign="top" width="47%">
-
-**Input — real**
-
-`klanten`
-
-| id | naam | email | leeftijd |
-| --- | --- | --- | --- |
-| 1 | Jan de Vries | jan@acme.nl | 42 |
-| 2 | Piet Janssen | piet@bedrijf.nl | 31 |
-
-`orders` *(FK: klant_id → klanten.id)*
-
-| id | klant_id | datum | bedrag |
-| --- | --- | --- | --- |
-| 100 | 1 | 2024-03-12 | €120.00 |
-| 101 | 1 | 2024-04-08 | €45.50 |
-| 102 | 2 | 2024-05-19 | €230.00 |
-| 103 | 2 | 2024-06-02 | €89.00 |
-
-</td>
-<td valign="middle" width="6%" align="center">
-
-**`syntherklaas`**
-
-━━▶
-
-</td>
-<td valign="top" width="47%">
-
-**Output — synthetic**
-
-`klanten`
-
-| id | naam | email | leeftijd |
-| --- | --- | --- | --- |
-| 1 | Tom Mulder | tom@example.org | 42 |
-| 2 | Liza van de Weterink | liza@example.com | 31 |
-
-`orders` *(FK preserved)*
-
-| id | klant_id | datum | bedrag |
-| --- | --- | --- | --- |
-| 100 | 1 | 2024-03-12 | €120.00 |
-| 101 | 1 | 2024-04-08 | €45.50 |
-| 102 | 2 | 2024-05-19 | €230.00 |
-| 103 | 2 | 2024-06-02 | €89.00 |
-
-</td>
-</tr>
-</table>
+1. **Dialog** — Claude asks about each table (paste examples or define columns together), per-column provider, FK relations, then volume + distributions per table and per column. After all tables are defined, Claude renders an ASCII UML diagram with cardinality.
+2. **Schema-YAML** — Claude writes the captured choices to `/tmp/syntherklaas-<sessid>/schema.yaml` (see [`examples/demo-schema.yaml`](skills/engineering/syntherklaas/examples/demo-schema.yaml) for the format).
+3. **Preview** — `generate.py --schema <yaml> --preview` runs the pipeline and prints 10 rows per table as JSON. Claude renders the preview in chat.
+4. **Output** — user picks `csv-loose` / `xlsx-loose` / `xlsx-multi` / `sqlite`; `generate.py --schema <yaml> --output <path> --format <fmt>` writes the data.
+5. **Save schema (optional)** — Claude offers to copy the YAML to a user-chosen path. Next time, `/syntherklaas <path>` skips the dialog: load YAML → show summary + preview → 1× confirmation → run.
 
 ## Installation
 
@@ -99,206 +51,174 @@ Onder de motorkap, kolom voor kolom:
 npx skills@latest add baswenneker/syntherklaas
 ```
 
-After installation, restart Claude Code (or open a new session). The skill registers itself via `.claude-plugin/plugin.json`.
+Restart Claude Code (or open a new session). The skill registers via `.claude-plugin/plugin.json`.
 
 ## Skills
 
 | Category | Skill | Description |
 | --- | --- | --- |
-| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Generate synthetic data from Excel (multi-tab) or a directory of CSVs into a SQLite database or multi-sheet `.xlsx` file with consistent PII anonymization (names, emails, phone numbers, BSNs, postcodes, IBANs) and intact foreign-key relationships. Output format is inferred from the extension. |
+| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Interactive synthetic data generator. Builds a data model through dialog, generates with Faker + NL extras, outputs CSV/XLSX/SQLite. Saved schemas re-run with one confirmation. |
 
 ## How to invoke
 
-From Claude Code, either invoke directly:
+From Claude Code:
 
 ```
 /syntherklaas
 ```
 
-Or include the task on the same line — Claude triggers the skill via its description (matches phrases like *synthetic data*, *fake data*, *anonymize*, *Excel/CSV to SQLite or XLSX*, *BSN-safe test data*):
+…starts the full dialog. Or pass a saved schema YAML to skip the dialog:
 
 ```
-/syntherklaas Anonymize example_data/xlsx/example_data.xlsx into ./demo.db, capped at 50 root rows.
+/syntherklaas ./demo-schema.yaml
 ```
 
-Or, for an Excel-format output:
+## Try it on the bundled example
 
-```
-/syntherklaas Anonymize example_data/xlsx/example_data.xlsx into ./demo.xlsx, capped at 50 root rows.
-```
+A 3-tier schema (klanten / orders / orderlines) with FKs, distributions, and categorical weights lives in [`skills/engineering/syntherklaas/examples/demo-schema.yaml`](skills/engineering/syntherklaas/examples/demo-schema.yaml).
 
-The skill loads its own instructions from `SKILL.md`, runs the pipeline (detect → resolve FKs → sample → anonymize → write), and reports per-column PII detection, FK resolution, row counts, and ID ranges.
-
-## Try it on the bundled demo
-
-A 3-table demo (50 klanten / 201 orders / 583 orderlines, with PII columns and meta-sheets) lives at the project root under `example_data/`:
-
-```
-example_data/
-├── xlsx/example_data.xlsx       # Excel variant (3 data tabs + 2 meta tabs)
-└── csv/                         # CSV-directory variant
-    ├── klanten.csv
-    ├── orders.csv
-    ├── orderlines.csv
-    ├── _relations.csv
-    └── _pii_config.csv
-```
-
-Both are committed; regenerate them with:
-
-```bash
-bash skills/engineering/syntherklaas/examples/run-example.sh
-```
-
-That script regenerates the demo, runs both variants through the pipeline, and prints a JOIN sanity check showing fake Dutch names with their order counts. You can also point Claude at the demo files directly:
-
-```
-/syntherklaas Run the pipeline on example_data/xlsx/example_data.xlsx into ./demo.db.
-```
-
-### Example run on `example_data/csv/`
-
-Invocation (no `--max-rows` cap, all input is processed):
+Run it directly:
 
 ```bash
 bash skills/engineering/syntherklaas/scripts/run.sh \
-  --input ./example_data/csv \
-  --output ./tmp/example_data.db
+  --schema skills/engineering/syntherklaas/examples/demo-schema.yaml \
+  --preview
 ```
 
-Pipeline report:
-
-```
-PII detection:
-  klanten.bsn: BSN
-  klanten.email: EMAIL_ADDRESS
-  klanten.naam: PERSON
-  klanten.postcode: NL_POSTCODE
-  klanten.telefoon: NL_PHONE
-  orderlines: (none)
-  orders: (none)
-
-FK resolution:
-  orderlines.order_id -> orders.id
-  orders.klant_id -> klanten.id
-Topological order: klanten -> orders -> orderlines
-
-Row counts:
-  klanten: 50 -> 50
-  orderlines: 583 -> 583
-  orders: 201 -> 201
-
-Anonymized 250 unique values across 5 entity types:
-  ['BSN', 'EMAIL_ADDRESS', 'NL_PHONE', 'NL_POSTCODE', 'PERSON']
-
-SQLite write:
-  klanten: 50 rows inserted (IDs 1..50)
-  orderlines: 583 rows inserted (IDs 1..583)
-  orders: 201 rows inserted (IDs 1..201)
-```
-
-Sample of `klanten` after the run:
-
-```
-$ sqlite3 -header -column ./tmp/example_data.db \
-    "SELECT id, naam, email, bsn, telefoon, postcode FROM klanten LIMIT 5"
-
-id  naam                     email                           bsn        telefoon     postcode
---  -----------------------  ------------------------------  ---------  -----------  --------
-1   Tom Mulder               van-ommerenben@example.org      372941631  06-51510466  2365 HM
-2   Liza van de Weterink     kde-bruin@example.org           219225060  06-07771090  0692 MX
-3   Lisanne Oosterhek        ejones@example.com              750586461  06-45258652  3923 SU
-4   Joy die Bont             ties93@example.org              951873246  06-36401889  5017 SZ
-5   Dean Garret-de Strigter  dylanovan-boulogne@example.org  580059145  06-23231473  7801 JI
-```
-
-All five PII types are replaced (names → Dutch fakes, emails → `@example.{org,com}` with domain fully replaced, BSNs pass 11-proof checksum, phones in `06-XXXXXXXX` format, postcodes in `1234 XX` format). Foreign keys remain consistent: `orderlines.order_id → orders.id → klanten.id` joins still return the same logical pairs as the input, just with the fake names.
-
-#### Or with xlsx output
-
-Swap the extension on `--output` to `.xlsx` and the pipeline writes a multi-sheet Excel file instead (one sheet per table, topological order, frozen header row):
+Or generate the full SQLite output (the YAML already declares `output.format: sqlite` and `output.path: ./demo.db`):
 
 ```bash
 bash skills/engineering/syntherklaas/scripts/run.sh \
-  --input ./example_data/csv \
-  --output ./tmp/example_data.xlsx
+  --schema skills/engineering/syntherklaas/examples/demo-schema.yaml
 ```
 
-The pipeline report is identical; the final write step prints `XLSX write:` instead of `SQLite write:`. Read the result back with pandas to verify the same FK joins still hold:
-
-```python
->>> import pandas as pd
->>> sheets = pd.read_excel("./tmp/example_data.xlsx", sheet_name=None)
->>> list(sheets)
-['klanten', 'orders', 'orderlines']
->>> sheets["klanten"][["id", "naam", "email", "bsn"]].head()
-   id                     naam                          email        bsn
-0   1               Tom Mulder      van-ommerenben@example.org  372941631
-1   2     Liza van de Weterink           kde-bruin@example.org  219225060
-2   3        Lisanne Oosterhek             ejones@example.com  750586461
-3   4              Joy die Bont               ties93@example.org  951873246
-4   5  Dean Garret-de Strigter   dylanovan-boulogne@example.org  580059145
-```
-
-`--mode append` is not supported for `.xlsx` output (the pipeline exits with code 2). Re-run against a new path instead.
-
-## Input format
-
-- **Excel**: one tab per table. Optional meta-tabs `_relations` (FK overrides) and `_pii_config` (PII overrides).
-- **CSV directory**: one file per table. Optional `_relations.csv` and `_pii_config.csv` in the same directory.
-
-Override schemas:
+A sample of `klanten` after the run:
 
 ```
-_relations:    table | column | references_table | references_column
-_pii_config:   table | column | pii_type         | strategy   (force | skip)
+$ sqlite3 -header -column ./demo.db \
+    "SELECT id, naam, bsn, postcode, leeftijd FROM klanten LIMIT 5"
+
+id  naam                              bsn        postcode  leeftijd
+--  --------------------------------  ---------  --------  --------
+1   Ali Schellekens                   391171823  4471 VH         47
+2   Finn Jansdr-Goyaerts van Waderle  278248962  4936 DR         26
+3   Melle van Brenen                  383465783  3242 CB         53
+4   Amin Gellemeyer                   839301030  2499 JO         56
+5   Floris van de Elzas-Blonk         105183477  1746 IQ         18
 ```
 
-Resolution priority:
+BSNs pass the 11-proof checksum, postcodes match `1234 XX`, phone numbers are 06-format, and `orders.klant_id` is guaranteed to reference an existing `klanten.id`.
 
-- **FKs**: existing DB schema (append-mode) > `_relations` > auto-infer (column-name `*_id` → match parent table).
-- **PII**: `_pii_config` (force/skip) > Presidio auto-detection.
+Walk through a full session transcript at [`skills/engineering/syntherklaas/examples/transcript.md`](skills/engineering/syntherklaas/examples/transcript.md).
 
-## PII coverage (v1)
+## Schema-YAML format
 
-| Type | Detection | Generation |
-|------|-----------|------------|
-| `PERSON` | Presidio NER (Spacy `nl_core_news_md`) | `Faker.name()` (nl_NL) |
-| `EMAIL_ADDRESS` | Presidio regex | `Faker.email()` (domain fully replaced) |
-| `NL_PHONE` / `PHONE_NUMBER` | Custom recognizer (06-/+31/0X0 formats) | Custom Faker provider (06-XXXXXXXX) |
-| `BSN` | Custom recognizer (regex + 11-proof checksum) | Custom Faker provider (passes 11-proof) |
-| `NL_IBAN` / `IBAN_CODE` | Custom recognizer (mod-97) | `Faker.iban()` |
-| `NL_POSTCODE` | Custom recognizer (`1234 AB`) | Custom Faker provider |
+```yaml
+version: 1
+locale: nl_NL          # default; any Faker locale (en_US, de_DE, ...)
+seed: 42               # optional; otherwise SHA256(schema)[:8] as int
 
-Out of scope for v1: addresses (street/huisnr), dates of birth, credit cards, passport numbers.
+output:                # optional; preset for re-invoke
+  format: sqlite       # csv-loose | xlsx-loose | xlsx-multi | sqlite
+  path: ./demo.db
 
-## Pipeline
+tables:
+  - name: users
+    columns:
+      - { name: id,    provider: sequential, primary_key: true }
+      - { name: naam,  provider: faker.name }
+      - { name: bsn,   provider: nl.bsn,    unique: true }
+      - { name: email, provider: faker.email }
+      - name: leeftijd
+        provider: numeric_range
+        type: int
+        min: 18
+        max: 80
+        distribution: normal
+        mean: 42
+        stddev: 15
+      - name: status
+        provider: categorical
+        choices: [active, inactive, suspended]
+        weights: [0.8, 0.15, 0.05]
+    volume:
+      count: { distribution: fixed, value: 100 }
 
+  - name: events
+    columns:
+      - { name: id,        provider: sequential, primary_key: true }
+      - { name: user_id,   provider: fk, references: users.id }
+      - name: occurred_at
+        provider: datetime_range
+        start: "2024-01-01"
+        end:   "2024-12-31"
+        distribution: uniform
+    volume:
+      per_parent:
+        parent: users
+        distribution: poisson
+        lambda: 20
+        min: 1
 ```
-Input (xlsx tabs / csv dir + optional _relations / _pii_config)
-   │
-   ▼
-1. Detect PII columns         (Presidio + custom NL recognizers + override)
-2. Resolve FKs (topo-sort)    (SQLite schema (append) > _relations > auto-infer)
-3. Sample (cap-only first-N)  (children follow via FK-filter)
-4. Anonymize PII              (FakerAnonymizer with shared entity_mapping)
-5. Write output               (.db/.sqlite via sqlite_writer; .xlsx via xlsx_writer)
-   │                          (ID-offset + FK rewrite; SQLite supports append, XLSX is new-only)
-   ▼
-SQLite or XLSX + human-readable report
-```
 
-The shared `entity_mapping` is the key to consistency: same input value always yields the same fake within a run, both across rows of one table and across tables (so a customer's anonymized name in `klanten.naam` matches their name in `orders.klant_naam`). FKs stay intact through per-table ID-offset rewriting; for SQLite append-mode, new IDs start at `MAX(id)+1`; for XLSX (new-only), IDs always start at 1.
+## Providers
+
+| Provider                | Locale-aware? | What it emits                                    |
+|-------------------------|:-------------:|---------------------------------------------------|
+| `sequential`            | n.v.t.        | Auto-increment int (PK)                           |
+| `fk`                    | n.v.t.        | Random pick from a parent table's ID column       |
+| `faker.<method>`        | ✅            | Any callable on a `Faker` instance — `name`, `email`, `address`, `phone_number`, `company`, `text`, ... |
+| `nl.bsn`                | ❌ NL-locked  | 11-proof BSN                                      |
+| `nl.iban`               | ❌ NL-locked  | NL IBAN with mod-97 checksum                      |
+| `nl.postcode`           | ❌ NL-locked  | `1234 AB`                                         |
+| `nl.phone`              | ❌ NL-locked  | `06-XXXXXXXX`                                     |
+| `nl.tussenvoegsel`      | ❌ NL-locked  | Surname-infix (`van der`, `de`, ...)              |
+| `numeric_range`         | n.v.t.        | int/float; distributions: `uniform`, `normal`, `lognormal`, `exponential` |
+| `categorical`           | n.v.t.        | Choice with optional weights                      |
+| `datetime_range`        | n.v.t.        | Datetime in `[start, end]`; `uniform` or `normal` |
+
+## Output formats
+
+| Format       | `--output` is...         | Notes                                                  |
+|--------------|--------------------------|--------------------------------------------------------|
+| `csv-loose`  | a (new/empty) directory  | One `<table>.csv` per table                            |
+| `xlsx-loose` | a (new/empty) directory  | One `<table>.xlsx` per table; per-sheet row limit applies |
+| `xlsx-multi` | a (new) `.xlsx` file     | One multi-sheet workbook; topological sheet order; frozen header |
+| `sqlite`     | a (new) `.db`/`.sqlite`  | Bulk insert; no FK constraints in DDL (FKs are correct by construction) |
+
+No append modes. The output target must be free (file: doesn't exist; directory: empty or doesn't exist).
+
+## Exit codes
+
+- `0` — success
+- `2` — schema/output/format problem (malformed YAML, unknown provider, FK to unknown column, output already exists, Excel row/sheet-name limit exceeded, ...)
+- `3` — cyclic FK detected
+- `4` — missing `uv` on PATH
 
 ## Tests
 
 ```bash
 cd skills/engineering/syntherklaas/scripts
 uv sync
-uv run pytest -v
+uv run pytest
 ```
 
-Unit tests cover BSN 11-proof, anonymizer mapping consistency cross-row + cross-table, FK auto-inference + cyclic + composite detection, SQLite ID-offset + FK rewrite + schema-mismatch, XLSX writer (ID-offset on new file, FK rewrite, NaN passthrough, empty table, sheet-name limit, topological sheet order, output-exists guard), and CLI pre-flight checks (unsupported extension, identical input/output paths, `--mode append` with xlsx, output already exists).
+Unit tests cover providers + validators (BSN 11-proof, NL IBAN mod-97, NL postcode/phone pattern), distributions (statistical mean/range checks on 1k–10k samples), schema validation (happy paths + every error branch), generation (rowcounts, FK integrity, determinism), writers (round-trip per format, output-exists guards, Excel limits).
+
+## Standalone CLI (without Claude Code)
+
+```bash
+cd skills/engineering/syntherklaas/scripts
+uv sync
+
+# Preview-only (JSON to stdout)
+uv run python generate.py --schema <yaml-path> --preview
+
+# Write
+uv run python generate.py --schema <yaml-path> --output ./out.db --format sqlite
+```
+
+The same `bash run.sh` wrapper handles the first-run `uv sync`; pass any of the flags through.
 
 ## Adding more skills to this plugin
 
@@ -309,33 +229,8 @@ Unit tests cover BSN 11-proof, anonymizer mapping consistency cross-row + cross-
 
 See [CLAUDE.md](CLAUDE.md) for repo conventions and [CONTEXT.md](CONTEXT.md) for shared vocabulary.
 
-## Standalone CLI (without Claude Code)
-
-If you want to run the pipeline directly without going through the skill:
-
-```bash
-cd skills/engineering/syntherklaas/scripts
-uv sync
-uv run python -m spacy download nl_core_news_md
-
-# SQLite output (supports --mode append on existing DBs)
-uv run python syntherklaas.py \
-  --input /path/to/data.xlsx \
-  --output /path/to/output.sqlite \
-  --max-rows 100
-
-# Excel output (multi-sheet, new file only)
-uv run python syntherklaas.py \
-  --input /path/to/data.xlsx \
-  --output /path/to/output.xlsx \
-  --max-rows 100
-```
-
-Exit codes: `0` ok, `2` schema mismatch / mode conflict / invalid output target, `3` cyclic / composite FK, `4` missing dependencies.
-
 ## Related
 
-- [microsoft/presidio](https://github.com/microsoft/presidio) — PII detection and de-identification SDK.
-- [joke2k/faker](https://github.com/joke2k/faker) — fake data generation, used here with the `nl_NL` locale.
+- [joke2k/faker](https://github.com/joke2k/faker) — fake data generation; used here locale-aware (`nl_NL` default).
 - [baswenneker/fwd-skills](https://github.com/baswenneker/fwd-skills) — sibling skills plugin from which this repo borrows layout conventions.
 - [mattpocock/skills](https://github.com/mattpocock/skills/tree/main) — the `skills` CLI used for installation and the layout pattern this repo follows.

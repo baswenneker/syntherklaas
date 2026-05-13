@@ -1,3 +1,0 @@
-table,column,references_table,references_column
-orders,klant_id,klanten,id
-orderlines,order_id,orders,id
