@@ -185,6 +185,8 @@ tables:
 | `xlsx-loose` | a (new/empty) directory  | One `<table>.xlsx` per table; per-sheet row limit applies |
 | `xlsx-multi` | a (new) `.xlsx` file     | One multi-sheet workbook; topological sheet order; frozen header |
 | `sqlite`     | a (new) `.db`/`.sqlite`  | Bulk insert; no FK constraints in DDL (FKs are correct by construction) |
+| `postgres`   | a (new) `.sql` file      | PostgreSQL dialect: `CREATE TABLE` (with `PRIMARY KEY` / `UNIQUE` / `REFERENCES`) + batched `INSERT INTO`, wrapped in `BEGIN; ... COMMIT;` |
+| `mssql`      | a (new) `.sql` file      | Microsoft SQL Server dialect: identical structure to `postgres` but with `[bracket]` identifiers, `N'...'` string literals, `BIT`/`NVARCHAR(MAX)`/`DATETIME2` types |
 
 No append modes. The output target must be free (file: doesn't exist; directory: empty or doesn't exist).
 

@@ -159,7 +159,9 @@ Translate user shorthand into the schema-YAML format (see `examples/demo-schema.
    2. `xlsx-loose` — losse XLSX-bestanden (in een directory)
    3. `xlsx-multi` — één multi-sheet XLSX
    4. `sqlite` — SQLite database (`.db` / `.sqlite`)
-3. Ask: **"Output-pad?"** (file for `xlsx-multi` / `sqlite`, directory for `csv-loose` / `xlsx-loose`).
+   5. `postgres` — één `.sql`-dump met PostgreSQL-dialect CREATE + INSERT
+   6. `mssql` — één `.sql`-dump met Microsoft SQL Server dialect
+3. Ask: **"Output-pad?"** (file for `xlsx-multi` / `sqlite` / `postgres` / `mssql`, directory for `csv-loose` / `xlsx-loose`).
 4. Update the schema-YAML to include the chosen `output: {format, path}` block.
 5. Run: `bash "${CLAUDE_SKILL_DIR}/scripts/run.sh" --schema /tmp/.../schema.yaml --output <path> --format <fmt>`
 6. Report file paths + per-table row counts (the CLI prints these on stdout).

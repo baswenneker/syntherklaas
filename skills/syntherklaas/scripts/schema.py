@@ -25,7 +25,9 @@ from providers import (
 )
 
 SCHEMA_VERSION = 1
-ALLOWED_FORMATS = frozenset({"csv-loose", "xlsx-loose", "xlsx-multi", "sqlite"})
+ALLOWED_FORMATS = frozenset(
+    {"csv-loose", "xlsx-loose", "xlsx-multi", "sqlite", "postgres", "mssql"}
+)
 
 
 class SchemaError(ValueError):

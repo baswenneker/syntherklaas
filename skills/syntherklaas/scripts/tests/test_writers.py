@@ -138,3 +138,229 @@ def test_xlsx_multi_row_limit_check(tmp_path):
             write(tables, ["big"], str(out), "xlsx-multi")
     finally:
         xlsx_writer.EXCEL_ROW_LIMIT = saved
+
+
+# -- postgres / mssql SQL writer -----------------------------------------
+
+from datetime import datetime  # noqa: E402
+
+
+@pytest.fixture
+def sql_fixtures():
+    users = pd.DataFrame({"id": [1, 2, 3], "naam": ["A", "B", "C"]})
+    events = pd.DataFrame(
+        {"id": [1, 2], "user_id": [1, 2], "kind": ["click", "view"]}
+    )
+    schema_tables = [
+        {
+            "name": "users",
+            "columns": [
+                {"name": "id", "provider": "sequential", "primary_key": True},
+                {"name": "naam", "provider": "faker.name", "unique": True},
+            ],
+        },
+        {
+            "name": "events",
+            "columns": [
+                {"name": "id", "provider": "sequential", "primary_key": True},
+                {"name": "user_id", "provider": "fk", "references": "users.id"},
+                {"name": "kind", "provider": "categorical"},
+            ],
+        },
+    ]
+    return {"users": users, "events": events}, ["users", "events"], schema_tables
+
+
+DIALECT_QUOTES = {
+    "postgres": {
+        "users_ident": '"users"',
+        "naam_ident": '"naam"',
+        "id_ident": '"id"',
+        "fk_reference": 'REFERENCES "users"("id")',
+        "string_prefix": "'",
+        "tx_begin": "BEGIN;",
+    },
+    "mssql": {
+        "users_ident": "[users]",
+        "naam_ident": "[naam]",
+        "id_ident": "[id]",
+        "fk_reference": "REFERENCES [users]([id])",
+        "string_prefix": "N'",
+        "tx_begin": "BEGIN TRANSACTION;",
+    },
+}
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_writes_single_file(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / f"out.{dialect}.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    assert out.exists()
+    assert out.suffix == ".sql"
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_refuses_existing_file(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    out.write_text("already here")
+    with pytest.raises(WriterError, match="already exists"):
+        write(tables, topo, str(out), dialect, schema_tables=schema)
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_create_table_quoting(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    q = DIALECT_QUOTES[dialect]
+    assert f"CREATE TABLE {q['users_ident']}" in text
+    assert q["naam_ident"] in text
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_pk_constraint_emitted(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    q = DIALECT_QUOTES[dialect]
+    # The id column line should contain PRIMARY KEY
+    id_lines = [line for line in text.splitlines() if q["id_ident"] in line and "PRIMARY KEY" in line]
+    assert id_lines, f"No PRIMARY KEY on id column found in:\n{text}"
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_unique_constraint_emitted(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    q = DIALECT_QUOTES[dialect]
+    unique_lines = [line for line in text.splitlines() if q["naam_ident"] in line and "UNIQUE" in line]
+    assert unique_lines, f"No UNIQUE on naam column found in:\n{text}"
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_fk_reference_emitted(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    assert DIALECT_QUOTES[dialect]["fk_reference"] in text
+    assert "CASCADE" not in text
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_string_escaping(tmp_path, dialect):
+    tables = {"t": pd.DataFrame({"id": [1], "naam": ["O'Brien"]})}
+    schema = [
+        {
+            "name": "t",
+            "columns": [
+                {"name": "id", "provider": "sequential", "primary_key": True},
+                {"name": "naam", "provider": "faker.name"},
+            ],
+        }
+    ]
+    out = tmp_path / "out.sql"
+    write(tables, ["t"], str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    # Quote is doubled
+    assert "O''Brien" in text
+    # MSSQL prefixes string literals with N'; Postgres does not
+    if dialect == "mssql":
+        assert "N'O''Brien'" in text
+    else:
+        assert "'O''Brien'" in text
+        assert "N'O''Brien'" not in text
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_null_for_missing(tmp_path, dialect):
+    tables = {"t": pd.DataFrame({"id": [1, 2], "naam": ["A", None]})}
+    schema = [
+        {
+            "name": "t",
+            "columns": [
+                {"name": "id", "provider": "sequential", "primary_key": True},
+                {"name": "naam", "provider": "faker.name"},
+            ],
+        }
+    ]
+    out = tmp_path / "out.sql"
+    write(tables, ["t"], str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    # Bare NULL keyword (no quotes); the value should land as "NULL"
+    assert "NULL)" in text or "NULL," in text
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_datetime_iso_quoted(tmp_path, dialect):
+    tables = {
+        "t": pd.DataFrame(
+            {"id": [1], "ts": [datetime(2026, 5, 14, 12, 30, 0)]}
+        )
+    }
+    schema = [
+        {
+            "name": "t",
+            "columns": [
+                {"name": "id", "provider": "sequential", "primary_key": True},
+                {"name": "ts", "provider": "datetime_range"},
+            ],
+        }
+    ]
+    out = tmp_path / "out.sql"
+    write(tables, ["t"], str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    assert "2026-05-14 12:30:00" in text
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_batching_splits_at_1000(tmp_path, dialect):
+    n_rows = 2500
+    tables = {
+        "t": pd.DataFrame({"id": list(range(1, n_rows + 1)), "naam": ["x"] * n_rows})
+    }
+    schema = [
+        {
+            "name": "t",
+            "columns": [
+                {"name": "id", "provider": "sequential", "primary_key": True},
+                {"name": "naam", "provider": "faker.name"},
+            ],
+        }
+    ]
+    out = tmp_path / "out.sql"
+    write(tables, ["t"], str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    # 2500 rows / 1000 batch → 3 INSERT statements
+    assert text.count("INSERT INTO") == 3
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_topo_order_respected(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    text = out.read_text()
+    users_ident = DIALECT_QUOTES[dialect]["users_ident"]
+    events_ident = users_ident.replace("users", "events")
+    users_pos = text.find(f"CREATE TABLE {users_ident}")
+    events_pos = text.find(f"CREATE TABLE {events_ident}")
+    assert users_pos != -1
+    assert events_pos != -1
+    assert users_pos < events_pos
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mssql"])
+def test_sql_transaction_wraps_output(tmp_path, sql_fixtures, dialect):
+    tables, topo, schema = sql_fixtures
+    out = tmp_path / "out.sql"
+    write(tables, topo, str(out), dialect, schema_tables=schema)
+    lines = [l for l in out.read_text().splitlines() if l.strip() and not l.startswith("--")]
+    assert lines[0] == DIALECT_QUOTES[dialect]["tx_begin"]
+    assert lines[-1] == "COMMIT;"

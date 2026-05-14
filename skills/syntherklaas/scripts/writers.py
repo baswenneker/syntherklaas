@@ -1,24 +1,29 @@
-"""Unified writer interface — dispatches to the four output formats.
+"""Unified writer interface — dispatches to the six output formats.
 
 Formats:
 - ``csv-loose``   : ``<output>`` is a dir; one ``<table>.csv`` per table
 - ``xlsx-loose``  : ``<output>`` is a dir; one ``<table>.xlsx`` per table
 - ``xlsx-multi``  : ``<output>`` is an .xlsx file; sheets in topo order
 - ``sqlite``      : ``<output>`` is a .db / .sqlite file
+- ``postgres``    : ``<output>`` is a .sql file (PostgreSQL dialect)
+- ``mssql``       : ``<output>`` is a .sql file (Microsoft SQL Server dialect)
 """
 
 from __future__ import annotations
 
 import os
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+import sql_writer
 import sqlite_writer
 import xlsx_writer
 from xlsx_writer import EXCEL_ROW_LIMIT, RowLimitExceededError
 
-SUPPORTED_FORMATS = frozenset({"csv-loose", "xlsx-loose", "xlsx-multi", "sqlite"})
+SUPPORTED_FORMATS = frozenset(
+    {"csv-loose", "xlsx-loose", "xlsx-multi", "sqlite", "postgres", "mssql"}
+)
 
 
 class WriterError(Exception):
@@ -30,6 +35,7 @@ def write(
     topo_order: List[str],
     output_path: str,
     fmt: str,
+    schema_tables: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     if fmt not in SUPPORTED_FORMATS:
         raise WriterError(
@@ -46,6 +52,12 @@ def write(
         if os.path.exists(output_path):
             raise WriterError(f"Output sqlite already exists: {output_path}")
         sqlite_writer.write(tables, topo_order, output_path)
+    elif fmt in ("postgres", "mssql"):
+        if os.path.exists(output_path):
+            raise WriterError(f"Output SQL file already exists: {output_path}")
+        sql_writer.write(
+            tables, topo_order, output_path, dialect=fmt, schema_tables=schema_tables
+        )
 
 
 def _ensure_empty_dir(path: str) -> None:

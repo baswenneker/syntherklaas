@@ -3,7 +3,7 @@
 CLI:
     --schema <path>             required; path to schema YAML
     --output <path>             output path (file or dir, format-dependent)
-    --format <fmt>              csv-loose | xlsx-loose | xlsx-multi | sqlite
+    --format <fmt>              csv-loose | xlsx-loose | xlsx-multi | sqlite | postgres | mssql
     --preview                   skip writers; dump 10 rows/table as JSON to stdout
 
 Determinism: seed = schema.seed if present, else SHA256(schema-bytes)[:8] as int.
@@ -80,7 +80,9 @@ def main(argv: List[str]) -> int:
         return 2
 
     try:
-        writers_write(tables, topo_order, output_path, output_fmt)
+        writers_write(
+            tables, topo_order, output_path, output_fmt, schema_tables=schema["tables"]
+        )
     except (
         WriterError,
         OutputExistsError,
@@ -103,7 +105,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     p.add_argument("--output", help="Output file or directory")
     p.add_argument(
         "--format",
-        choices=["csv-loose", "xlsx-loose", "xlsx-multi", "sqlite"],
+        choices=["csv-loose", "xlsx-loose", "xlsx-multi", "sqlite", "postgres", "mssql"],
         help="Output format",
     )
     p.add_argument(
