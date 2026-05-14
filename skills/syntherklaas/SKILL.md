@@ -119,10 +119,21 @@ Use `1..*` notation on the edges. Ask: **"Klopt het model? (ok / wijzig <tabel>)
 
 ### Phase 3 — Volume + distributies
 
-For each table in topological order:
+**Before asking the first volume question**, send een korte intro-message (geen AskUserQuestion) die uitlegt wát we nu gaan vastleggen en wat de keuzes betekenen. Voorbeeld-strekking (parafraseer, niet letterlijk kopiëren):
 
-- **Root** (no FK): ask **"hoeveel rijen `<tabel>`? (vast getal, of `poisson 100`, `normal 100±10`, `uniform 80-120`)"**.
-- **Child** (has FK with `per_parent` semantics): ask **"hoeveel `<tabel>` per `<parent>`? (zelfde syntax)"**. If the user wants a flat total instead, accept that and use `count` semantics.
+> We bepalen nu hoeveel rijen elke tabel krijgt. Per tabel kies je een verdeling:
+> - **Vast** — exact dit aantal rijen (bv. `1000`). Geen variatie.
+> - **Poisson λ=N** — N als gemiddelde, met natuurlijke variatie rond dat getal. Past bij "ongeveer N events per gebruiker" of "ongeveer N orders per dag".
+> - **Normal μ±σ** — klokvormig rond μ met spreiding σ. Past bij "rond de 500, meeste tussen 400 en 600".
+> - **Uniform min-max** — elk getal in `[min, max]` even waarschijnlijk. Brede gelijke spreiding.
+> Voor child-tabellen geldt dit per parent-rij (`per_parent`); voor root-tabellen geldt het als totaal.
+
+Pas de exact gepresenteerde opties in elke AskUserQuestion aan de tabel-context aan (bv. concrete λ/μ/min-max-suggesties op basis van wat de user eerder zei).
+
+For each table in topological order, ask via AskUserQuestion:
+
+- **Root** (no FK): **"Hoeveel rijen voor `<tabel>`?"** — bied 4 keuzes: een redelijke vaste waarde, een poisson, een normal, en een uniform. Concrete getallen invullen.
+- **Child** (has FK with `per_parent` semantics): **"Hoeveel `<tabel>` per `<parent>`?"** — zelfde 4 opties, schaling per parent. Als user expliciet een totaal noemt, accepteer dat en val terug op `count` semantics.
 
 For each `datetime_range` column: ask **"tijdsperiode? (bv. `2024-01-01..2024-12-31`; `uniform` of `normal`)"**.
 
