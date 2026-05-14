@@ -225,6 +225,117 @@ def test_output_path_must_be_string(minimal_schema):
         validate(minimal_schema)
 
 
+# -- conditional values (when) -------------------------------------------
+
+
+def _schema_with_when(when_clause, *, target_provider="faker.url"):
+    return {
+        "version": 1,
+        "tables": [
+            {
+                "name": "events",
+                "columns": [
+                    {"name": "id", "provider": "sequential"},
+                    {
+                        "name": "event_type",
+                        "provider": "categorical",
+                        "choices": ["click", "open"],
+                    },
+                    {"name": "url", "provider": target_provider, "when": when_clause},
+                ],
+                "volume": {"count": {"distribution": "fixed", "value": 1}},
+            }
+        ],
+    }
+
+
+def test_when_happy_path():
+    validate(_schema_with_when({"column": "event_type", "equals": "click"}))
+
+
+def test_when_accepts_list_equals():
+    validate(_schema_with_when({"column": "event_type", "equals": ["click", "open"]}))
+
+
+def test_when_unknown_column_rejected():
+    with pytest.raises(SchemaError, match="defined earlier"):
+        validate(_schema_with_when({"column": "ghost", "equals": "click"}))
+
+
+def test_when_forward_reference_rejected():
+    # `when.column` points to a column defined AFTER the conditional column
+    schema = {
+        "version": 1,
+        "tables": [
+            {
+                "name": "events",
+                "columns": [
+                    {"name": "id", "provider": "sequential"},
+                    {
+                        "name": "url",
+                        "provider": "faker.url",
+                        "when": {"column": "event_type", "equals": "click"},
+                    },
+                    {
+                        "name": "event_type",
+                        "provider": "categorical",
+                        "choices": ["click", "open"],
+                    },
+                ],
+                "volume": {"count": {"distribution": "fixed", "value": 1}},
+            }
+        ],
+    }
+    with pytest.raises(SchemaError, match="defined earlier"):
+        validate(schema)
+
+
+def test_when_self_reference_rejected():
+    with pytest.raises(SchemaError, match="itself"):
+        validate(_schema_with_when({"column": "url", "equals": "click"}))
+
+
+def test_when_on_sequential_rejected():
+    schema = {
+        "version": 1,
+        "tables": [
+            {
+                "name": "t",
+                "columns": [
+                    {"name": "kind", "provider": "categorical", "choices": ["a", "b"]},
+                    {
+                        "name": "id",
+                        "provider": "sequential",
+                        "when": {"column": "kind", "equals": "a"},
+                    },
+                ],
+                "volume": {"count": {"distribution": "fixed", "value": 1}},
+            }
+        ],
+    }
+    with pytest.raises(SchemaError, match="not allowed"):
+        validate(schema)
+
+
+def test_when_on_fk_rejected(minimal_schema):
+    minimal_schema["tables"][1]["columns"][1]["when"] = {
+        "column": "id",
+        "equals": 1,
+    }
+    with pytest.raises(SchemaError, match="not allowed"):
+        validate(minimal_schema)
+
+
+def test_when_missing_equals_rejected():
+    with pytest.raises(SchemaError, match="equals"):
+        validate(_schema_with_when({"column": "event_type"}))
+
+
+def test_when_empty_list_equals_rejected():
+    with pytest.raises(SchemaError, match="non-empty"):
+        validate(_schema_with_when({"column": "event_type", "equals": []}))
+
+
 # -- file IO --------------------------------------------------------------
 
 

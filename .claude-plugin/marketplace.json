@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "syntherklaas-dev",
+  "description": "Local-dev marketplace for the syntherklaas plugin",
+  "owner": {
+    "name": "Bas Wenneker",
+    "email": "bas@headingfwd.com"
+  },
+  "plugins": [
+    {
+      "name": "syntherklaas",
+      "source": "./",
+      "description": "Interactive synthetic data generator. Builds a data model through dialog, generates with Faker + NL extras, outputs CSV/XLSX/SQLite."
+    }
+  ]
+}

@@ -69,6 +69,65 @@ def test_per_parent_each_parent_has_exactly_k_children(minimal_schema):
     assert set(counts.keys()) == set(tables["users"]["id"].tolist())
 
 
+# -- conditional values (when) -------------------------------------------
+
+
+def _conditional_schema(equals_value):
+    return {
+        "version": 1,
+        "locale": "nl_NL",
+        "seed": 42,
+        "tables": [
+            {
+                "name": "events",
+                "columns": [
+                    {"name": "id", "provider": "sequential", "primary_key": True},
+                    {
+                        "name": "event_type",
+                        "provider": "categorical",
+                        "choices": ["sent", "bounce", "open", "click"],
+                        "weights": [0.4, 0.1, 0.3, 0.2],
+                    },
+                    {
+                        "name": "url",
+                        "provider": "faker.url",
+                        "when": {"column": "event_type", "equals": equals_value},
+                    },
+                ],
+                "volume": {"count": {"distribution": "fixed", "value": 100}},
+            }
+        ],
+    }
+
+
+def test_when_fills_only_matching_rows():
+    tables, _ = _gen(_conditional_schema("click"))
+    df = tables["events"]
+    is_click = df["event_type"] == "click"
+    assert df.loc[is_click, "url"].notna().all()
+    assert df.loc[~is_click, "url"].isna().all()
+
+
+def test_when_accepts_list_of_values():
+    tables, _ = _gen(_conditional_schema(["click", "open"]))
+    df = tables["events"]
+    matching = df["event_type"].isin(["click", "open"])
+    assert df.loc[matching, "url"].notna().all()
+    assert df.loc[~matching, "url"].isna().all()
+
+
+def test_when_preserves_determinism_for_matching_rows():
+    # Same RNG draw must land on matching rows regardless of how narrow
+    # the condition is — non-matching rows just get masked out afterwards.
+    broad, _ = _gen(_conditional_schema(["sent", "bounce", "open", "click"]))
+    narrow, _ = _gen(_conditional_schema("click"))
+    click_rows = narrow["events"]["event_type"] == "click"
+    assert (
+        narrow["events"].loc[click_rows, "url"].tolist()
+        == broad["events"].loc[click_rows, "url"].tolist()
+    )
+
+
 # -- determinism ----------------------------------------------------------
 
 

@@ -38,7 +38,7 @@ flowchart LR
 ## How it works
 
 1. **Dialog** — Claude asks about each table (paste examples or define columns together), per-column provider, FK relations, then volume + distributions per table and per column. After all tables are defined, Claude renders an ASCII UML diagram with cardinality.
-2. **Schema-YAML** — Claude writes the captured choices to `/tmp/syntherklaas-<sessid>/schema.yaml` (see [`examples/demo-schema.yaml`](skills/engineering/syntherklaas/examples/demo-schema.yaml) for the format).
+2. **Schema-YAML** — Claude writes the captured choices to `/tmp/syntherklaas-<sessid>/schema.yaml` (see [`examples/demo-schema.yaml`](skills/syntherklaas/examples/demo-schema.yaml) for the format).
 3. **Preview** — `generate.py --schema <yaml> --preview` runs the pipeline and prints 10 rows per table as JSON. Claude renders the preview in chat.
 4. **Output** — user picks `csv-loose` / `xlsx-loose` / `xlsx-multi` / `sqlite`; `generate.py --schema <yaml> --output <path> --format <fmt>` writes the data.
 5. **Save schema (optional)** — Claude offers to copy the YAML to a user-chosen path. Next time, `/syntherklaas <path>` skips the dialog: load YAML → show summary + preview → 1× confirmation → run.
@@ -55,9 +55,9 @@ Restart Claude Code (or open a new session). The skill registers via `.claude-pl
 
 ## Skills
 
-| Category | Skill | Description |
-| --- | --- | --- |
-| engineering | [syntherklaas](skills/engineering/syntherklaas/SKILL.md) | Interactive synthetic data generator. Builds a data model through dialog, generates with Faker + NL extras, outputs CSV/XLSX/SQLite. Saved schemas re-run with one confirmation. |
+| Skill | Description |
+| --- | --- |
+| [syntherklaas](skills/syntherklaas/SKILL.md) | Interactive synthetic data generator. Builds a data model through dialog, generates with Faker + NL extras, outputs CSV/XLSX/SQLite. Saved schemas re-run with one confirmation. |
 
 ## How to invoke
 
@@ -75,21 +75,21 @@ From Claude Code:
 
 ## Try it on the bundled example
 
-A 3-tier schema (klanten / orders / orderlines) with FKs, distributions, and categorical weights lives in [`skills/engineering/syntherklaas/examples/demo-schema.yaml`](skills/engineering/syntherklaas/examples/demo-schema.yaml).
+A 3-tier schema (klanten / orders / orderlines) with FKs, distributions, and categorical weights lives in [`skills/syntherklaas/examples/demo-schema.yaml`](skills/syntherklaas/examples/demo-schema.yaml).
 
 Run it directly:
 
 ```bash
-bash skills/engineering/syntherklaas/scripts/run.sh \
-  --schema skills/engineering/syntherklaas/examples/demo-schema.yaml \
+bash skills/syntherklaas/scripts/run.sh \
+  --schema skills/syntherklaas/examples/demo-schema.yaml \
   --preview
 ```
 
 Or generate the full SQLite output (the YAML already declares `output.format: sqlite` and `output.path: ./demo.db`):
 
 ```bash
-bash skills/engineering/syntherklaas/scripts/run.sh \
-  --schema skills/engineering/syntherklaas/examples/demo-schema.yaml
+bash skills/syntherklaas/scripts/run.sh \
+  --schema skills/syntherklaas/examples/demo-schema.yaml
 ```
 
 A sample of `klanten` after the run:
@@ -109,7 +109,7 @@ id  naam                              bsn        postcode  leeftijd
 
 BSNs pass the 11-proof checksum, postcodes match `1234 XX`, phone numbers are 06-format, and `orders.klant_id` is guaranteed to reference an existing `klanten.id`.
 
-Walk through a full session transcript at [`skills/engineering/syntherklaas/examples/transcript.md`](skills/engineering/syntherklaas/examples/transcript.md).
+Walk through a full session transcript at [`skills/syntherklaas/examples/transcript.md`](skills/syntherklaas/examples/transcript.md).
 
 ## Schema-YAML format
 
@@ -198,7 +198,7 @@ No append modes. The output target must be free (file: doesn't exist; directory:
 ## Tests
 
 ```bash
-cd skills/engineering/syntherklaas/scripts
+cd skills/syntherklaas/scripts
 uv sync
 uv run pytest
 ```
@@ -208,7 +208,7 @@ Unit tests cover providers + validators (BSN 11-proof, NL IBAN mod-97, NL postco
 ## Standalone CLI (without Claude Code)
 
 ```bash
-cd skills/engineering/syntherklaas/scripts
+cd skills/syntherklaas/scripts
 uv sync
 
 # Preview-only (JSON to stdout)
@@ -222,7 +222,7 @@ The same `bash run.sh` wrapper handles the first-run `uv sync`; pass any of the 
 
 ## Adding more skills to this plugin
 
-1. Create `skills/<category>/<skill-name>/SKILL.md` (YAML frontmatter `name`, `description`, plus a markdown body).
+1. Create `skills/<skill-name>/SKILL.md` (YAML frontmatter `name`, `description`, plus a markdown body).
 2. Bash helpers go in a sibling `scripts/` subfolder.
 3. Register the skill folder in `.claude-plugin/plugin.json` under `skills`.
 4. Add a row to the table above.

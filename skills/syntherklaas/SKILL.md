@@ -48,10 +48,14 @@ Note: NL-locked providers (`nl.bsn`, `nl.iban`, `nl.postcode`, `nl.phone`, `nl.t
 For each table:
 
 1. Ask: **"Tabelnaam?"**
-2. Ask: **"Heb je voorbeeld-data om te paste'n, of definiëren we kolommen samen?"**
+2. Ask: **"Hoe wil je de kolommen van `<tabel>` definiëren?"** with three options:
+   - **Paste voorbeeld-data** — plak een paar regels CSV-achtig of freeform; ik leid kolommen + types af.
+   - **Samen definiëren** — we lopen kolom-voor-kolom door (naam + voorbeeld), tot je `klaar` zegt.
+   - **Doe een voorstel** — ik stel zelf kolommen voor op basis van de tabelnaam.
 3. Branch:
    - **Paste**: user pastes CSV-like rows or freeform examples. Extract column names + 1-5 sample values per column.
    - **Guided**: loop "kolomnaam? voorbeeld(en)? volgende of klaar?" until the user signals done.
+   - **Voorstel**: propose 5-10 plausible columns directly from the table name — each met een naam, type, gekozen provider en 1-2 voorbeelden — en spring meteen door naar de confirm-tabel (step 5; provider-inferentie heb je al in het voorstel gedaan). Als de tabelnaam te dun is om iets zinnigs te verzinnen (bv. `data`, `items`, `records`, `tabel1`, `temp`, eenletterige namen): vraag **eerst** "Waar is `<tabel>` voor?" en bouw het voorstel op basis van dat antwoord. Bij concrete namen (`klanten`, `orders`, `email_campagnes`, `facturen`, `producten`, `medewerkers`, ...) niet eerst vragen — stel direct voor en laat de user in step 6 corrigeren.
 4. Based on column names + sample values, **infer a provider per column** from this table:
 
    | Provider name             | When to pick |
@@ -82,9 +86,19 @@ For each table:
    | leeftijd  | numeric_range int | min 18, max 80 | 42            |
    | status    | categorical       | choices=[...]  | active        |
    ```
-6. Ask: **"Klopt? (ok / wijzig kolom <naam>)"**. On wijzig: update the column and re-render, loop until ok.
-7. Ask: **"Foreign keys naar andere tabellen? (bv. `user_id → users.id` of `geen`)"**. Add as `fk`-provider columns.
-8. Ask: **"Nog een tabel of klaar?"**. Loop until `klaar`.
+6. **Conditional values** — detect cases where a column should only be populated when another column has a specific value (klassiek voorbeeld: `url` alleen gevuld bij `event_type=click`; `cancelled_at` alleen bij `status=cancelled`). Use the `when`-clause on the dependent column:
+   ```yaml
+   - name: url
+     provider: faker.url
+     when:
+       column: event_type
+       equals: click          # scalar of lijst, bv. [click, custom_click]
+       # else_value: <value>  # optioneel; default null
+   ```
+   Rules: `when.column` moet **eerder** in dezelfde tabel staan (validator dwingt dat af) en mag niet op `sequential` / `fk` / PK kolommen. Stel `when` proactief voor wanneer de naam-combinatie het suggereert; render in de confirm-tabel met constraint `when event_type=click`.
+7. Ask: **"Klopt? (ok / wijzig kolom <naam>)"**. On wijzig: update the column and re-render, loop until ok.
+8. Ask: **"Foreign keys naar andere tabellen? (bv. `user_id → users.id` of `geen`)"**. Add as `fk`-provider columns.
+9. Ask: **"Nog een tabel of klaar?"**. Loop until `klaar`.
 
 ### Phase 2 — ASCII UML
 

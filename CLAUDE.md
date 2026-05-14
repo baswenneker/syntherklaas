@@ -4,29 +4,25 @@ Repo-level instructions for agents working in `syntherklaas`.
 
 ## Purpose
 
-`syntherklaas` is a single-skill Claude Code plugin: it ships one skill (`syntherklaas`) that turns Excel or CSV input into anonymized SQLite or XLSX output. The repo also contains the supporting Python pipeline (Presidio + Faker) under the skill's `scripts/` folder.
+`syntherklaas` is a single-skill Claude Code plugin: it ships one skill (`syntherklaas`) that builds a data model through an interactive dialog and generates synthetic data from scratch with Faker + numpy (locale-aware, plus NL-locked providers for BSN/IBAN/postcode/phone). Outputs CSV, XLSX (loose or multi-sheet), or SQLite. The supporting Python pipeline lives under the skill's `scripts/` folder; a schema-YAML is the boundary between the dialog (Claude in chat) and the deterministic generator (`generate.py`).
 
 ## Repo layout
 
 ```
 .claude-plugin/plugin.json                          # Plugin manifest (skill paths)
-skills/<category>/<skill-name>/                     # One folder per skill
+skills/<skill-name>/                                # One folder per skill
   SKILL.md                                          # Required: YAML frontmatter + markdown body
   scripts/                                          # Bash entry + Python pipeline + tests
-  examples/                                         # Demo input + smoke runner
+  examples/                                         # Demo schema-YAML + session transcript
 CONTEXT.md                                          # Shared vocabulary
 README.md                                           # Public-facing index
 ```
 
-Skills follow the layout convention from [HeadingFWD/fwd-skills](https://github.com/baswenneker/fwd-skills): one folder per skill under `skills/<category>/`, registered in `.claude-plugin/plugin.json`. Unlike `fwd-skills`, this repo does **not** prefix skill names with `fwd:` — the skill is named `syntherklaas` plain (folder name matches frontmatter `name` exactly, so the slash command is `/syntherklaas`).
-
-## Categories
-
-- **`engineering/`** — workflow tooling that touches data, code, or repo state. The current `syntherklaas` skill writes SQLite or XLSX output and runs Python pipelines.
+Skills follow the layout convention from [HeadingFWD/fwd-skills](https://github.com/baswenneker/fwd-skills): one folder per skill under `skills/`, registered in `.claude-plugin/plugin.json`. Unlike `fwd-skills`, this repo does **not** prefix skill names with `fwd:` — the skill is named `syntherklaas` plain (folder name matches frontmatter `name` exactly, so the slash command is `/syntherklaas`).
 
 ## Adding a skill
 
-1. Create `skills/<category>/<skill-name>/SKILL.md` with frontmatter:
+1. Create `skills/<skill-name>/SKILL.md` with frontmatter:
 
    ```markdown
    ---
@@ -44,7 +40,7 @@ Skills follow the layout convention from [HeadingFWD/fwd-skills](https://github.
 
 - **Folder name matches `name` frontmatter exactly.** The slash command is `/<name>`.
 - `SKILL.md` is the entry point; supporting code lives in sibling folders (`scripts/`, `examples/`).
-- **Python pipelines use `uv`.** Each skill's `scripts/pyproject.toml` declares its own deps; the bash glue (`scripts/run.sh`) handles first-run install + Spacy model download.
+- **Python pipelines use `uv`.** Each skill's `scripts/pyproject.toml` declares its own deps; the bash glue (`scripts/run.sh`) handles first-run install via `uv sync`.
 - **Bash helpers go in `scripts/`**, referenced from `SKILL.md` via `${CLAUDE_SKILL_DIR}/scripts/<name>.sh`.
 - **All git commands route through `rtk git`** (no plain `git` fallback) where the rtk hook is configured.
 - See [CONTEXT.md](CONTEXT.md) for project vocabulary.

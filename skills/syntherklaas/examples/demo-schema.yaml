@@ -1,13 +1,13 @@
 # Demo schema for syntherklaas — 3-tier model met klanten, orders en orderlines.
 #
 # Run met:
-#   bash skills/engineering/syntherklaas/scripts/run.sh \
-#       --schema skills/engineering/syntherklaas/examples/demo-schema.yaml \
+#   bash skills/syntherklaas/scripts/run.sh \
+#       --schema skills/syntherklaas/examples/demo-schema.yaml \
 #       --preview
 #
 # Of voor een echte run (output zit in dit schema, geen --output/--format nodig):
-#   bash skills/engineering/syntherklaas/scripts/run.sh \
-#       --schema skills/engineering/syntherklaas/examples/demo-schema.yaml
+#   bash skills/syntherklaas/scripts/run.sh \
+#       --schema skills/syntherklaas/examples/demo-schema.yaml
 #
 # Aanroep vanuit Claude Code: /syntherklaas <pad-naar-dit-bestand> →
 # skill toont samenvatting + preview en vraagt 1× confirmatie.

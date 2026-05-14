@@ -233,9 +233,24 @@ def _build_dataframe(
             data[col_name] = generator.column_values(col, n, ctx={"parent_ids": parent_ids})
             continue
 
-        data[col_name] = generator.column_values(col, n)
+        values = generator.column_values(col, n)
+        if "when" in col:
+            values = _apply_when(values, col["when"], data)
+        data[col_name] = values
 
     return pd.DataFrame(data)
+
+
+def _apply_when(
+    values: List[Any],
+    when: Dict[str, Any],
+    data: Dict[str, List[Any]],
+) -> List[Any]:
+    dep_values = data[when["column"]]
+    eq = when["equals"]
+    allowed = set(eq) if isinstance(eq, list) else {eq}
+    else_value = when.get("else_value")
+    return [v if d in allowed else else_value for v, d in zip(values, dep_values)]
 
 
 # -- preview + report ---------------------------------------------------

@@ -120,9 +120,11 @@ def _validate_table_shape(tbl: Any) -> None:
         raise SchemaError(f"Table {name!r}: 'columns' must be a non-empty list")
     if "volume" not in tbl or not isinstance(tbl["volume"], dict):
         raise SchemaError(f"Table {name!r}: 'volume' (mapping) is required")
-    seen_cols = set()
+    seen_cols: set[str] = set()
     for col in cols:
         _validate_column(col, name)
+        if "when" in col:
+            _validate_when(col, name, seen_cols)
         if col["name"] in seen_cols:
             raise SchemaError(f"Table {name!r}: duplicate column {col['name']!r}")
         seen_cols.add(col["name"])
@@ -229,6 +231,36 @@ def _validate_datetime_range(col: Dict[str, Any], table_name: str) -> None:
         raise SchemaError(
             f"{table_name}.{name}: datetime distribution {dist!r} not in {sorted(DATETIME_DISTRIBUTIONS)}"
         )
+
+
+def _validate_when(
+    col: Dict[str, Any],
+    table_name: str,
+    prior_cols: set[str],
+) -> None:
+    name = col["name"]
+    provider = col["provider"]
+    if provider in ("sequential", "fk") or col.get("primary_key"):
+        raise SchemaError(
+            f"{table_name}.{name}: 'when' is not allowed on {provider} or PK columns"
+        )
+    when = col["when"]
+    if not isinstance(when, dict):
+        raise SchemaError(f"{table_name}.{name}: 'when' must be a mapping")
+    dep = when.get("column")
+    if not isinstance(dep, str) or not dep:
+        raise SchemaError(f"{table_name}.{name}: 'when.column' must be a non-empty string")
+    if dep == name:
+        raise SchemaError(f"{table_name}.{name}: 'when.column' cannot reference the column itself")
+    if dep not in prior_cols:
+        raise SchemaError(
+            f"{table_name}.{name}: 'when.column' {dep!r} must be defined earlier in the same table"
+        )
+    if "equals" not in when:
+        raise SchemaError(f"{table_name}.{name}: 'when' requires 'equals'")
+    eq = when["equals"]
+    if isinstance(eq, list) and not eq:
+        raise SchemaError(f"{table_name}.{name}: 'when.equals' list must be non-empty")
 
 
 def _validate_fk_ref(
