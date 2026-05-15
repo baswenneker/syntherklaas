@@ -7,9 +7,59 @@
 Real data is the fastest way to prototype.<br>
 GDPR is the fastest way to get blocked.
 
-`syntherklaas` skips the input data step entirely: instead of feeding it a production export to anonymize, you have a short conversation with it about the shape of the data you want — tables, columns, foreign keys, volumes, distributions — and it generates a coherent synthetic dataset from scratch with [Faker](https://github.com/joke2k/faker) (locale-aware) plus NL-locked providers for BSN (11-proof), IBAN (mod-97), postcode, and phone formats.
+A good synthetic dataset is a gift — and you don't have to wait until December.
 
-Packaged as a [Claude Code](https://claude.ai/code) skill: the dialog runs in chat, the schema is captured as a YAML, and a small Python generator turns that YAML into CSV, XLSX, or SQLite output.
+## The problem
+
+On most projects the first question is: *what data do you have?* And the answer is usually "none", "not enough", or "we have it but GDPR makes it off-limits".
+
+`syntherklaas` skips the input-data step entirely: you have a short conversation about the shape you need — tables, columns, foreign keys, volumes, distributions — and it generates a coherent synthetic dataset from scratch.
+
+Built on [Faker](https://github.com/joke2k/faker) (locale-aware) plus NL-locked providers for BSN (11-proof), IBAN (mod-97), postcode, and phone formats — fake values that still pass real validators. Packaged as a [Claude Code](https://claude.ai/code) skill: the dialog runs in chat, the schema is captured as a YAML, and a small Python generator turns that YAML into CSV, XLSX, SQLite, or a SQL dump.
+
+## Watch the 2-minute intro
+
+<p align="center">
+  <iframe src="https://www.veed.io/embed/320d6102-79cd-41a5-bc89-a5df8c4dcd95?watermark=0&color=purple&sharing=0&title=0" width="744" height="504" frameborder="0" title="syntherklaas intro" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+</p>
+
+**[▶ Watch on Veed](https://www.veed.io/view/320d6102-79cd-41a5-bc89-a5df8c4dcd95/089cd154-4be1-4141-8433-f86e369f2c20)** — a quick tour: define two related tables, see the data model, pick volume distributions, and pick an output format.
+
+## Installation
+
+> Only tested with [Claude Code](https://claude.ai/code).
+
+```bash
+npx skills@latest add baswenneker/syntherklaas
+```
+
+Restart Claude Code (or open a new session). The skill registers via `.claude-plugin/plugin.json`.
+
+## How it feels in a session
+
+1. **Start the skill**
+
+   ```
+   /syntherklaas
+   ```
+
+2. **Define your first table** — for example `users` with `user_id, first_name, last_name, bsn, email`. Faker handles name + email; `nl.bsn` produces 11-proof BSNs.
+
+3. **Add related tables** — for example `invoices` with `user_id`, description, amount, IBAN. The `user_id` column is auto-detected as an FK to `users.id`; `iban` gets `nl.iban` (mod-97).
+
+4. **Review the data model** — Claude renders an ASCII UML diagram with cardinality. Looks right? Continue. Otherwise: correct a table.
+
+5. **Pick volumes per table** — for each table, choose one of four distributions:
+   - **Fixed** (e.g. `1000` users)
+   - **Poisson** with λ (e.g. "around 5 invoices per user")
+   - **Normal** with μ ± σ
+   - **Uniform** in `[min, max]` — or just describe it in your own words and Claude maps it to the right distribution.
+
+6. **Preview** — 10 rows per table, rendered in chat.
+
+7. **Pick an output format** — CSV, XLSX (loose or multi-sheet), SQLite, or a PostgreSQL / MSSQL SQL dump. Or just say what you want; Claude picks the right flag.
+
+8. **Save the schema (optional)** — store the YAML at a path of your choice. Next time, `/syntherklaas <path>` reproduces the exact same dataset (deterministic seed).
 
 ```mermaid
 flowchart LR
@@ -35,24 +85,6 @@ flowchart LR
     G --> O3
 ```
 
-## How it works
-
-1. **Dialog** — Claude asks about each table (paste examples or define columns together), per-column provider, FK relations, then volume + distributions per table and per column. After all tables are defined, Claude renders an ASCII UML diagram with cardinality.
-2. **Schema-YAML** — Claude writes the captured choices to `/tmp/syntherklaas-<sessid>/schema.yaml` (see [`examples/demo-schema.yaml`](skills/syntherklaas/examples/demo-schema.yaml) for the format).
-3. **Preview** — `generate.py --schema <yaml> --preview` runs the pipeline and prints 10 rows per table as JSON. Claude renders the preview in chat.
-4. **Output** — user picks `csv-loose` / `xlsx-loose` / `xlsx-multi` / `sqlite`; `generate.py --schema <yaml> --output <path> --format <fmt>` writes the data.
-5. **Save schema (optional)** — Claude offers to copy the YAML to a user-chosen path. Next time, `/syntherklaas <path>` skips the dialog: load YAML → show summary + preview → 1× confirmation → run.
-
-## Installation
-
-> Only tested with [Claude Code](https://claude.ai/code).
-
-```bash
-npx skills@latest add baswenneker/syntherklaas
-```
-
-Restart Claude Code (or open a new session). The skill registers via `.claude-plugin/plugin.json`.
-
 ## Skills
 
 | Skill | Description |
@@ -73,7 +105,7 @@ From Claude Code:
 /syntherklaas ./demo-schema.yaml
 ```
 
-## Try it on the bundled example
+## Run the bundled example
 
 A 3-tier schema (klanten / orders / orderlines) with FKs, distributions, and categorical weights lives in [`skills/syntherklaas/examples/demo-schema.yaml`](skills/syntherklaas/examples/demo-schema.yaml).
 
