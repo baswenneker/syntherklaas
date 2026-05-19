@@ -35,55 +35,94 @@ npx skills@latest add baswenneker/syntherklaas
 
 Restart Claude Code (or open a new session). The skill registers via `.claude-plugin/plugin.json`.
 
-## How it feels in a session
+## What a conversation looks like
 
-1. **Start the skill**
+The dialog *is* the product. You name the tables and columns; Claude picks the providers, infers the foreign keys, renders the model, and asks the right follow-ups. Here's a session — slightly compressed, but faithful to the real flow.
 
-   ```
-   /syntherklaas
-   ```
+> **You:** `/syntherklaas`
+>
+> **Claude:** Which table do we start with? You can paste sample data, define columns together, or just give me a table name and I'll propose one.
+>
+> **You:** `users` — `user_id, first_name, last_name, bsn, email`
+>
+> **Claude:** Inferred for `users`:
+>
+> | col          | provider           | constraint | example       |
+> |--------------|--------------------|------------|---------------|
+> | user_id      | `sequential`       | PK         | 1, 2, 3, ...  |
+> | first_name   | `faker.first_name` |            | Pieter        |
+> | last_name    | `faker.last_name`  |            | Jansen        |
+> | bsn          | `nl.bsn`           | UNIQUE     | 391171823     |
+> | email        | `faker.email`      |            | x@example.com |
+>
+> Look right? (`ok` / `change <col>`)
+>
+> **You:** ok. Next: `invoices` — `invoice_id, user_id, description, amount, iban`
+>
+> **Claude:** Inferred for `invoices`:
+>
+> | col          | provider                  | constraint  | example          |
+> |--------------|---------------------------|-------------|------------------|
+> | invoice_id   | `sequential`              | PK          | 1, 2, 3, ...     |
+> | user_id      | `fk` → `users.user_id`    | NOT NULL    | 1..1000          |
+> | description  | `faker.text`              |             | "Lorem ipsum..." |
+> | amount       | `numeric_range` (uniform) |             | 137.42           |
+> | iban         | `nl.iban`                 |             | NL34RABO0382...  |
+>
+> Model so far:
+>
+> ```
+> ┌─────────────────────────┐         ┌─────────────────────────┐
+> │ users                   │ 1     * │ invoices                │
+> ├─────────────────────────┤─────────┤─────────────────────────┤
+> │ user_id (PK)   INT      │         │ invoice_id (PK)  INT    │
+> │ first_name     STR      │         │ user_id (FK)     INT ───┤
+> │ last_name      STR      │         │ description      STR    │
+> │ bsn (UQ)       STR      │         │ amount           FLOAT  │
+> │ email          STR      │         │ iban             STR    │
+> └─────────────────────────┘         └─────────────────────────┘
+> ```
+>
+> Another table, or done?
+>
+> **You:** done.
+>
+> **Claude:** Volumes per table — pick a distribution:
+>
+> - **Fixed** — exact row count
+> - **Poisson λ** — natural variation around λ (e.g. *"around 5 invoices per user"*)
+> - **Normal μ ± σ** — bell-shaped
+> - **Uniform [min, max]** — or just describe it in words
+>
+> How many `users`? And how many `invoices` per user?
+>
+> **You:** 1000 users; around 5 invoices per user.
+>
+> **Claude:** Preview (10 rows per table)...
+>
+> ```
+> users (1000 total)
+> | user_id | first_name | last_name        | bsn       | email                  |
+> | 1       | Ali        | Schellekens      | 391171823 | leonholthuis@example…  |
+> | 2       | Finn       | Jansdr-Goyaerts  | 278248962 | molenvigo@example.net  |
+> | ...
+> ```
+>
+> Output format? CSV / XLSX / SQLite / PostgreSQL or MSSQL SQL dump.
+>
+> **You:** sqlite, `./demo.db`
+>
+> **Claude:** Wrote sqlite → `./demo.db`
+>   users: 1000 rows
+>   invoices: 4983 rows
+>
+> Save this schema for re-use? (path, or `no`)
+>
+> **You:** `./demo-schema.yaml`
+>
+> **Claude:** Saved. Next time, `/syntherklaas ./demo-schema.yaml` reproduces this exact dataset — same seed, same rows.
 
-2. **Define your first table** — for example `users` with `user_id, first_name, last_name, bsn, email`. Faker handles name + email; `nl.bsn` produces 11-proof BSNs.
-
-3. **Add related tables** — for example `invoices` with `user_id`, description, amount, IBAN. The `user_id` column is auto-detected as an FK to `users.id`; `iban` gets `nl.iban` (mod-97).
-
-4. **Review the data model** — Claude renders an ASCII UML diagram with cardinality. Looks right? Continue. Otherwise: correct a table.
-
-5. **Pick volumes per table** — for each table, choose one of four distributions:
-   - **Fixed** (e.g. `1000` users)
-   - **Poisson** with λ (e.g. "around 5 invoices per user")
-   - **Normal** with μ ± σ
-   - **Uniform** in `[min, max]` — or just describe it in your own words and Claude maps it to the right distribution.
-
-6. **Preview** — 10 rows per table, rendered in chat.
-
-7. **Pick an output format** — CSV, XLSX (loose or multi-sheet), SQLite, or a PostgreSQL / MSSQL SQL dump. Or just say what you want; Claude picks the right flag.
-
-8. **Save the schema (optional)** — store the YAML at a path of your choice. Next time, `/syntherklaas <path>` reproduces the exact same dataset (deterministic seed).
-
-```mermaid
-flowchart LR
-    subgraph dialog["Dialog (Claude in chat)"]
-        P0["locale"]
-        P1["tables + columns + FKs"]
-        P2["ASCII UML"]
-        P3["volume + distributions"]
-    end
-    Y["schema.yaml"]
-    G["<b>generate.py</b><br/>Faker + numpy<br/>(seeded)"]
-
-    subgraph out["Output"]
-        O1["CSV<br/>(loose files)"]
-        O2["XLSX<br/>(loose or multi-sheet)"]
-        O3["SQLite<br/>(.db / .sqlite)"]
-    end
-
-    dialog --> Y
-    Y --> G
-    G --> O1
-    G --> O2
-    G --> O3
-```
+You don't need to know the YAML format to use it: the dialog writes it for you. A saved schema is just the receipt — re-runnable, diff-able, version-controllable.
 
 ## Skills
 
@@ -143,15 +182,17 @@ BSNs pass the 11-proof checksum, postcodes match `1234 XX`, phone numbers are 06
 
 Walk through a full session transcript at [`skills/syntherklaas/examples/transcript.md`](skills/syntherklaas/examples/transcript.md).
 
-## Schema-YAML format
+## Schema-YAML (the receipt)
+
+A saved schema looks like this — short enough to grasp at a glance:
 
 ```yaml
 version: 1
-locale: nl_NL          # default; any Faker locale (en_US, de_DE, ...)
-seed: 42               # optional; otherwise SHA256(schema)[:8] as int
+locale: nl_NL          # any Faker locale; default nl_NL
+seed: 42               # optional; derived from schema bytes if omitted
 
 output:                # optional; preset for re-invoke
-  format: sqlite       # csv-loose | xlsx-loose | xlsx-multi | sqlite
+  format: sqlite
   path: ./demo.db
 
 tables:
@@ -159,39 +200,12 @@ tables:
     columns:
       - { name: id,    provider: sequential, primary_key: true }
       - { name: naam,  provider: faker.name }
-      - { name: bsn,   provider: nl.bsn,    unique: true }
-      - { name: email, provider: faker.email }
-      - name: leeftijd
-        provider: numeric_range
-        type: int
-        min: 18
-        max: 80
-        distribution: normal
-        mean: 42
-        stddev: 15
-      - name: status
-        provider: categorical
-        choices: [active, inactive, suspended]
-        weights: [0.8, 0.15, 0.05]
+      - { name: bsn,   provider: nl.bsn, unique: true }
     volume:
-      count: { distribution: fixed, value: 100 }
-
-  - name: events
-    columns:
-      - { name: id,        provider: sequential, primary_key: true }
-      - { name: user_id,   provider: fk, references: users.id }
-      - name: occurred_at
-        provider: datetime_range
-        start: "2024-01-01"
-        end:   "2024-12-31"
-        distribution: uniform
-    volume:
-      per_parent:
-        parent: users
-        distribution: poisson
-        lambda: 20
-        min: 1
+      count: { distribution: fixed, value: 1000 }
 ```
+
+For the full surface — `numeric_range` with `normal`/`lognormal`/`exponential`, `categorical` with `weights`, `datetime_range`, `per_parent` child volumes, conditional `when` clauses — see the worked example: [`skills/syntherklaas/examples/demo-schema.yaml`](skills/syntherklaas/examples/demo-schema.yaml).
 
 ## Providers
 
