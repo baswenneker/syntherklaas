@@ -20,7 +20,9 @@ Built on [Faker](https://github.com/joke2k/faker) (locale-aware) plus NL-locked 
 ## Watch the 2-minute intro
 
 <p align="center">
-  <iframe src="https://www.veed.io/embed/320d6102-79cd-41a5-bc89-a5df8c4dcd95?watermark=0&color=purple&sharing=0&title=0" width="744" height="504" frameborder="0" title="syntherklaas intro" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+  <a href="https://www.veed.io/view/320d6102-79cd-41a5-bc89-a5df8c4dcd95/089cd154-4be1-4141-8433-f86e369f2c20">
+    <img src="https://cdn-user-public.veed.io/animatedProjectThumbnails/048671ad-89de-4864-bdee-fb0291f7eef2.gif" alt="Watch the 2-minute intro: a quick tour through a full syntherklaas session" width="744">
+  </a>
 </p>
 
 **[▶ Watch on Veed](https://www.veed.io/view/320d6102-79cd-41a5-bc89-a5df8c4dcd95/089cd154-4be1-4141-8433-f86e369f2c20)** — a quick tour: define two related tables, see the data model, pick volume distributions, and pick an output format.
