@@ -21,7 +21,7 @@ Built on [Faker](https://github.com/joke2k/faker) (locale-aware) plus NL-locked 
 
 <p align="center">
   <a href="https://www.veed.io/view/320d6102-79cd-41a5-bc89-a5df8c4dcd95/089cd154-4be1-4141-8433-f86e369f2c20">
-    <img src="https://cdn-user-public.veed.io/animatedProjectThumbnails/048671ad-89de-4864-bdee-fb0291f7eef2.gif" alt="Watch the 2-minute intro: a quick tour through a full syntherklaas session" width="744">
+    <img src="assets/intro-thumbnail.png" alt="Watch the 2-minute intro: a quick tour through a full syntherklaas session" width="744">
   </a>
 </p>
 
